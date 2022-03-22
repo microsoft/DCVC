@@ -1,0 +1,6 @@
+*.pyc
+.vscode/
+*.bin
+*.png
+*.so
+build/

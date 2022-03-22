@@ -1,0 +1,85 @@
+{
+    "HEVC_B": {
+        "base_path": "/media/data/HEVC_B",
+        "sequences": {
+            "BQTerrace_1920x1024_60":       {"frames":  100, "gop":  10},
+            "BasketballDrive_1920x1024_50": {"frames":  100, "gop":  10},
+            "Cactus_1920x1024_50":          {"frames":  100, "gop":  10},
+            "Kimono1_1920x1024_24":         {"frames":  100, "gop":  10},
+            "ParkScene_1920x1024_24":       {"frames":  100, "gop":  10}
+        }
+    },
+    "HEVC_C": {
+        "base_path": "/media/data/HEVC_C",
+        "sequences": {
+            "BQMall_832x448_60":            {"frames":  100, "gop":  10},
+            "BasketballDrill_832x448_50":   {"frames":  100, "gop":  10},
+            "PartyScene_832x448_50":        {"frames":  100, "gop":  10},
+            "RaceHorses_832x448_30":        {"frames":  100, "gop":  10}
+        }
+    },
+    "HEVC_D": {
+        "base_path": "/media/data/HEVC_D",
+        "sequences": {
+            "BasketballPass_384x192_50":    {"frames":  100, "gop":  10},
+            "BlowingBubbles_384x192_50":    {"frames":  100, "gop":  10},
+            "BQSquare_384x192_50":          {"frames":  100, "gop":  10},
+            "RaceHorses_384x192_50":        {"frames":  100, "gop":  10}
+        }
+    },
+    "HEVC_E": {
+        "base_path": "/media/data/HEVC_E",
+        "sequences": {
+            "FourPeople_1280x704_60":       {"frames":  100, "gop":  10},
+            "Johnny_1280x704_60":           {"frames":  100, "gop":  10},
+            "KristenAndSara_1280x704_60":   {"frames":  100, "gop":  10}
+        }
+    },
+    "UVG": {
+        "base_path": "/media/data/UVGDataSet_crop",
+        "sequences": {
+            "Beauty_1920x1024_120fps_420_8bit_YUV":            {"frames":  120, "gop":  12},
+            "Bosphorus_1920x1024_120fps_420_8bit_YUV":         {"frames":  120, "gop":  12},
+            "HoneyBee_1920x1024_120fps_420_8bit_YUV":          {"frames":  120, "gop":  12},
+            "Jockey_1920x1024_120fps_420_8bit_YUV":            {"frames":  120, "gop":  12},
+            "ReadySteadyGo_1920x1024_120fps_420_8bit_YUV":     {"frames":  120, "gop":  12},
+            "ShakeNDry_1920x1024_120fps_420_8bit_YUV":         {"frames":  120, "gop":  12},
+            "YachtRide_1920x1024_120fps_420_8bit_YUV":         {"frames":  120, "gop":  12}
+        }
+    },
+    "MCL-JCV": {
+        "base_path": "/media/data/MCL-JCV",
+        "sequences": {
+            "videoSRC01_1920x1024_30":       {"frames":  120, "gop":  12},
+            "videoSRC02_1920x1024_30":       {"frames":  120, "gop":  12},
+            "videoSRC03_1920x1024_30":       {"frames":  120, "gop":  12},
+            "videoSRC04_1920x1024_30":       {"frames":  120, "gop":  12},
+            "videoSRC05_1920x1024_25":       {"frames":  120, "gop":  12},
+            "videoSRC06_1920x1024_25":       {"frames":  120, "gop":  12},
+            "videoSRC07_1920x1024_25":       {"frames":  120, "gop":  12},
+            "videoSRC08_1920x1024_25":       {"frames":  120, "gop":  12},
+            "videoSRC09_1920x1024_25":       {"frames":  120, "gop":  12},
+            "videoSRC10_1920x1024_30":       {"frames":  120, "gop":  12},
+            "videoSRC11_1920x1024_30":       {"frames":  120, "gop":  12},
+            "videoSRC12_1920x1024_30":       {"frames":  120, "gop":  12},
+            "videoSRC13_1920x1024_30":       {"frames":  120, "gop":  12},
+            "videoSRC14_1920x1024_30":       {"frames":  120, "gop":  12},
+            "videoSRC15_1920x1024_30":       {"frames":  120, "gop":  12},
+            "videoSRC16_1920x1024_30":       {"frames":  120, "gop":  12},
+            "videoSRC17_1920x1024_24":       {"frames":  120, "gop":  12},
+            "videoSRC18_1920x1024_25":       {"frames":  120, "gop":  12},
+            "videoSRC19_1920x1024_30":       {"frames":  120, "gop":  12},
+            "videoSRC20_1920x1024_25":       {"frames":  120, "gop":  12},
+            "videoSRC21_1920x1024_24":       {"frames":  120, "gop":  12},
+            "videoSRC22_1920x1024_24":       {"frames":  120, "gop":  12},
+            "videoSRC23_1920x1024_24":       {"frames":  120, "gop":  12},
+            "videoSRC24_1920x1024_24":       {"frames":  120, "gop":  12},
+            "videoSRC25_1920x1024_24":       {"frames":  120, "gop":  12},
+            "videoSRC26_1920x1024_30":       {"frames":  120, "gop":  12},
+            "videoSRC27_1920x1024_30":       {"frames":  120, "gop":  12},
+            "videoSRC28_1920x1024_30":       {"frames":  120, "gop":  12},
+            "videoSRC29_1920x1024_24":       {"frames":  120, "gop":  12},
+            "videoSRC30_1920x1024_30":       {"frames":  120, "gop":  12}
+        }
+    }
+}
