@@ -14,18 +14,6 @@ steps:
   inputs:
     toolMajorVersion: 'V2'
 
-- task: Semmle@0
-  env: 
-    SYSTEM_ACCESSTOKEN: $(System.AccessToken)
-  inputs:
-    sourceCodeDirectory: '$(Build.SourcesDirectory)'
-    language: 'tsandjs'
-    includeNodeModules: true
-    querySuite: 'Recommended'
-    timeout: '1800'
-    ram: '16384'
-    addProjectDirToScanningExclusionList: true
-
 - task: Semmle@1
   inputs:
     sourceCodeDirectory: '$(Build.SourcesDirectory)'
