@@ -29,7 +29,7 @@ steps:
     querySuite: 'Recommended'
     timeout: '1800'
     ram: '16384'
-addProjectDirToScanningExclusionList: true
+    addProjectDirToScanningExclusionList: true
 
 - task: Semmle@1
   inputs:
