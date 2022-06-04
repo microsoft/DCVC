@@ -23,8 +23,8 @@
         "sequences": {
             "BasketballPass_384x192_50":    {"frames":  100, "gop":  10},
             "BlowingBubbles_384x192_50":    {"frames":  100, "gop":  10},
-            "BQSquare_384x192_50":          {"frames":  100, "gop":  10},
-            "RaceHorses_384x192_50":        {"frames":  100, "gop":  10}
+            "BQSquare_384x192_60":          {"frames":  100, "gop":  10},
+            "RaceHorses_384x192_30":        {"frames":  100, "gop":  10}
         }
     },
     "HEVC_E": {

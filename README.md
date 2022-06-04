@@ -56,12 +56,12 @@ At last, the folder structure of dataset is like:
 
 * Download CompressAI models
     ```
-    cd checkpoints/
+    cd ./checkpoints
     python download_compressai_models.py
     cd ..
     ```
 
-* Download [DCVC models](https://1drv.ms/u/s!AozfVVwtWWYoiS5mcGX320bFXI0k?e=iMeykH) and put them into /checkpoints folder.
+* Download [DCVC models](https://1drv.ms/u/s!AozfVVwtWWYoiS5mcGX320bFXI0k?e=iMeykH) and put them into ./checkpoints folder.
 
 # Test DCVC
 
