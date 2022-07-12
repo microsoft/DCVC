@@ -4,3 +4,5 @@
 *.png
 *.so
 build/
+*.tar
+*.pyd
