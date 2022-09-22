@@ -35,7 +35,7 @@ When comparing with traditional codecs, it is highly suggested to use the settin
 * Use 10-bit as internal bit-depth. (6% gap over 8-bit)
 * Use YUV420 when comparing for YUV420 source content and use YUV444 when comparing RGB content. (22% gap when using different color spaces)
 
-We suggest using the official reference software (HM, VTM, and ECM) to generate tradition codec anchors. For low delay encoding, the suggested command lines are as follows. We suggest using HM-16.25, VTM-17.0, and ECM-5.0 as traditional codec reference. Using a more recent version is also preferred.
+We suggest using the official reference software ([HM](https://vcgit.hhi.fraunhofer.de/jvet/HM), [VTM](https://vcgit.hhi.fraunhofer.de/jvet/VVCSoftware_VTM), and [ECM](https://jvet-experts.org/doc_end_user/documents/27_Teleconference/wg11/JVET-AA0006-v1.zip)) to generate tradition codec anchors. For low delay encoding, the suggested command lines are as follows. We suggest using HM-16.25, VTM-17.0, and ECM-5.0 as traditional codec reference. Using a more recent version is also preferred.
 
 ### Encoding for RGB content
 

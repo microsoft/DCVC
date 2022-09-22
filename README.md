@@ -15,14 +15,7 @@ Please note that different methods may use different configurations to test diff
 
 So, it does not make sense to compare the numbers in different methods directly, unless making sure they are using same test conditions.
 
-Please find more details on the [test_conditions](./test_conditions.md).
-
-# Command line to generate VTM results
-
-Get VTM from https://vcgit.hhi.fraunhofer.de/jvet/VVCSoftware_VTM and build the project.
-```bash
-EncoderApp -c encoder_lowdelay_vtm.cfg --InputFile={input file name} --BitstreamFile={bitstream file name} --DecodingRefreshType=2 --InputBitDepth=8 --OutputBitDepth=8 --OutputBitDepthC=8 --InputChromaFormat=444 --FrameRate={frame rate} --FramesToBeEncoded={frame number} --SourceWidth={width} --SourceHeight={height} --IntraPeriod=32 --QP={qp} --Level=6.2
-```
+Please find more details on the [test conditions](./test_conditions.md).
 
 # Acknowledgement
 The implementation is based on [CompressAI](https://github.com/InterDigitalInc/CompressAI) and [PyTorchVideoCompression](https://github.com/ZhihaoHu/PyTorchVideoCompression).
