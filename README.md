@@ -15,6 +15,8 @@ Please note that different methods may use different configurations to test diff
 
 So, it does not make sense to compare the numbers in different methods directly, unless making sure they are using same test conditions.
 
+Please find more details on the [test_conditions](./test_conditions.md).
+
 # Command line to generate VTM results
 
 Get VTM from https://vcgit.hhi.fraunhofer.de/jvet/VVCSoftware_VTM and build the project.
