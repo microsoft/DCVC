@@ -6,7 +6,6 @@ import json
 import os
 from unittest.mock import patch
 
-import torch
 import numpy as np
 
 

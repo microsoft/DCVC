@@ -214,7 +214,6 @@ class MEBasic(nn.Module):
         self.relu4 = nn.ReLU()
         self.conv5 = nn.Conv2d(16, 2, 7, 1, padding=3)
 
-
     def forward(self, x):
         x = self.relu1(self.conv1(x))
         x = self.relu2(self.conv2(x))
