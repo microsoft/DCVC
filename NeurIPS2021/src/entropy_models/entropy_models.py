@@ -65,9 +65,8 @@ class EntropyModel(nn.Module):
         raise NotImplementedError()
 
     def _check_entropy_coder(self):
-        if self.entropy_coder == None:
+        if self.entropy_coder is None:
             self.entropy_coder = _EntropyCoder()
-
 
     def _quantize(self, inputs, mode, means=None):
         if mode not in ("dequantize", "symbols"):
@@ -310,7 +309,6 @@ class EntropyBottleneck(EntropyModel):
         quantized_cdf = self._pmf_to_cdf(pmf, tail_mass, pmf_length, max_length)
         self._quantized_cdf = quantized_cdf
         self._cdf_length = pmf_length + 2
-
 
     def _logits_cumulative(self, inputs, stop_gradient):
         # TorchScript not yet working (nn.Mmodule indexing not supported)

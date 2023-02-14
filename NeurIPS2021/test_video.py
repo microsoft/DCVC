@@ -44,14 +44,15 @@ def parse_args():
     parser.add_argument('--output_json_result_path', type=str, required=True)
     parser.add_argument("--model_type",  type=str,  default="psnr", help="psnr, msssim")
 
-
     args = parser.parse_args()
     return args
+
 
 def PSNR(input1, input2):
     mse = torch.mean((input1 - input2) ** 2)
     psnr = 20 * torch.log10(1 / torch.sqrt(mse))
     return psnr.item()
+
 
 def read_frame_to_torch(path):
     input_image = Image.open(path).convert('RGB')
@@ -60,12 +61,14 @@ def read_frame_to_torch(path):
     input_image = input_image.unsqueeze(0)/255
     return input_image
 
+
 def write_torch_frame(frame, path):
     frame_result = frame.clone()
     frame_result = frame_result.cpu().detach().numpy().transpose(1, 2, 0)*255
     frame_result = np.clip(np.rint(frame_result), 0, 255)
     frame_result = Image.fromarray(frame_result.astype('uint8'), 'RGB')
     frame_result.save(path)
+
 
 def encode_one(args_dict, device):
     i_frame_load_checkpoint = torch.load(args_dict['i_frame_model_path'],
@@ -99,7 +102,8 @@ def encode_one(args_dict, device):
     frame_pixel_num = 0
     frame_num = args_dict['frame_num']
 
-    recon_bin_folder = os.path.join(args_dict['recon_bin_path'], sub_dir_name, os.path.basename(args_dict['model_path'])[:-4])
+    recon_bin_folder = os.path.join(args_dict['recon_bin_path'], sub_dir_name,
+                                    os.path.basename(args_dict['model_path'])[:-4])
     if not os.path.exists(recon_bin_folder):
         os.makedirs(recon_bin_folder)
 
@@ -172,7 +176,7 @@ def encode_one(args_dict, device):
 
             ref_frame = ref_frame.clamp_(0, 1)
             if args_dict['write_recon_frame']:
-                write_torch_frame(ref_frame.squeeze(),os.path.join(recon_bin_folder, f"recon_frame_{frame_idx}.png"))
+                write_torch_frame(ref_frame.squeeze(), os.path.join(recon_bin_folder, f"recon_frame_{frame_idx}.png"))
             if args_dict['model_type'] == 'psnr':
                 qualitys.append(PSNR(ref_frame, ori_frame))
             else:
@@ -265,7 +269,7 @@ def worker(use_cuda, args):
 def filter_dict(result):
     keys = ['i_frame_num', 'p_frame_num', 'ave_i_frame_bpp', 'ave_i_frame_quality', 'ave_p_frame_bpp',
             'ave_p_frame_bpp_mv_y', 'ave_p_frame_bpp_mv_z', 'ave_p_frame_bpp_y',
-            'ave_p_frame_bpp_z', 'ave_p_frame_quality','ave_all_frame_bpp','ave_all_frame_quality']
+            'ave_p_frame_bpp_z', 'ave_p_frame_quality', 'ave_all_frame_bpp', 'ave_all_frame_quality']
     res = {k: v for k, v in result.items() if k in keys}
     return res
 

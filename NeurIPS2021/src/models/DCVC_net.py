@@ -180,11 +180,10 @@ class DCVC_net(nn.Module):
 
         self.opticFlow = ME_Spynet()
 
-
     def motioncompensation(self, ref, mv):
-        ref_feature =  self.feature_extract(ref)
+        ref_feature = self.feature_extract(ref)
         prediction_init = flow_warp(ref_feature, mv)
-        context =  self.context_refine(prediction_init)
+        context = self.context_refine(prediction_init)
 
         return context
 
@@ -407,7 +406,7 @@ class DCVC_net(nn.Module):
                                    self.auto_regressive, torch.cat((temporal_prior_params, params), dim=1),
                                    self.entropy_parameters)
         recon_image_feature = self.contextualDecoder_part1(y_hat)
-        recon_image = self.contextualDecoder_part2(torch.cat((recon_image_feature, context) , dim=1))
+        recon_image = self.contextualDecoder_part2(torch.cat((recon_image_feature, context), dim=1))
         recon_image = recon_image.clamp(0, 1)
 
         return recon_image
@@ -451,7 +450,7 @@ class DCVC_net(nn.Module):
         means_hat, scales_hat = gaussian_params.chunk(2, 1)
 
         recon_image_feature = self.contextualDecoder_part1(compressed_y_renorm)
-        recon_image = self.contextualDecoder_part2(torch.cat((recon_image_feature, context) , dim=1))
+        recon_image = self.contextualDecoder_part2(torch.cat((recon_image_feature, context), dim=1))
 
         total_bits_y, _ = self.feature_probs_based_sigma(
             feature_renorm, means_hat, scales_hat)
