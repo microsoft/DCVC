@@ -1,0 +1,11 @@
+{
+    "root_path": "/opt/Dataset/",
+    "test_classes": {
+        "kodak": {
+            "test": 1,
+            "base_path": "kodak",
+            "src_type": "png",
+            "img_folder": 1
+        }
+    }
+}
