@@ -5,6 +5,7 @@ Official Pytorch implementation for Neural Video Compression including:
 * [Hybrid Spatial-Temporal Entropy Modelling for Neural Video Compression](https://arxiv.org/abs/2207.05894), ACM MM 2022, in [this folder](./ACMMM2022/).
   -  The first end-to-end neural video codec to exceed H.266 (VTM) using the highest compression ratio configuration, in terms of both PSNR and MS-SSIM.
   -  The first end-to-end neural video codec to achieve rate adjustment in single model.
+* [EVC: Towards Real-Time Neural Image Compression with Mask Decay](https://openreview.net/forum?id=XUxad2Gj40n), ICLR 2023, in [this folder](./ICLR2023).
 
 # On the comparison
 
@@ -37,6 +38,13 @@ If you find this work useful for your research, please cite:
   author={Li, Jiahao and Li, Bin and Lu, Yan},
   booktitle={Proceedings of the 30th ACM International Conference on Multimedia},
   year={2022}
+}
+
+@inproceedings{wang2023EVC,
+  title={EVC: Towards Real-Time Neural Image Compression with Mask Decay},
+  author={Wang, Guo-Hua and Li, Jiahao and Li, Bin and Lu, Yan},
+  booktitle={International Conference on Learning Representations},
+  year={2023}
 }
 ```
 
