@@ -1,0 +1,103 @@
+{
+    "HEVC_B": {
+        "test": 0,
+        "base_path": "/data/HEVC_B/",
+        "sequences": {
+            "BQTerrace_1920x1080_60":       {"frames":  96, "gop":  32},
+            "BasketballDrive_1920x1080_50": {"frames":  96, "gop":  32},
+            "Cactus_1920x1080_50":          {"frames":  96, "gop":  32},
+            "Kimono1_1920x1080_24":         {"frames":  96, "gop":  32},
+            "ParkScene_1920x1080_24":       {"frames":  96, "gop":  32}
+        }
+    },
+    "HEVC_C": {
+        "test": 0,
+        "base_path": "/data/HEVC_C/",
+        "sequences": {
+            "BQMall_832x480_60":            {"frames":  96, "gop":  32},
+            "BasketballDrill_832x480_50":   {"frames":  96, "gop":  32},
+            "PartyScene_832x480_50":        {"frames":  96, "gop":  32},
+            "RaceHorses_832x480_30":        {"frames":  96, "gop":  32}
+        }
+    },
+    "HEVC_D": {
+        "test": 1,
+        "base_path": "/data/HEVC_D/",
+        "sequences": {
+            "BasketballPass_416x240_50":    {"frames":  96, "gop":  32},
+            "BlowingBubbles_416x240_50":    {"frames":  96, "gop":  32},
+            "BQSquare_416x240_60":          {"frames":  96, "gop":  32},
+            "RaceHorses_416x240_30":        {"frames":  96, "gop":  32}
+        }
+    },
+    "HEVC_E": {
+        "test": 0,
+        "base_path": "/data/HEVC_E/",
+        "sequences": {
+            "FourPeople_1280x720_60":       {"frames":  96, "gop":  32},
+            "Johnny_1280x720_60":           {"frames":  96, "gop":  32},
+            "KristenAndSara_1280x720_60":   {"frames":  96, "gop":  32}
+        }
+    },
+    "HEVC_RGB": {
+        "test": 0,
+        "base_path": "/data/HEVC_RGB/",
+        "sequences": {
+            "DucksAndLegs_1920x1080_30_RGB":       {"frames":  96, "gop":  32},
+            "EBULupoCandlelight_1920x1080_50_RGB": {"frames":  96, "gop":  32},
+            "EBURainFruits_1920x1080_50_RGB":      {"frames":  96, "gop":  32},
+            "Kimono1_1920x1080_24_RGB":            {"frames":  96, "gop":  32},
+            "OldTownCross_1920x1080_50_RGB":       {"frames":  96, "gop":  32},
+            "ParkScene_1920x1080_24_RGB":          {"frames":  96, "gop":  32}
+        }
+    },
+    "MCL-JCV": {
+        "test": 0,
+        "base_path": "/data/MCL-JCV/",
+        "sequences": {
+            "videoSRC01_1920x1080_30":       {"frames":  96, "gop":  32},
+            "videoSRC02_1920x1080_30":       {"frames":  96, "gop":  32},
+            "videoSRC03_1920x1080_30":       {"frames":  96, "gop":  32},
+            "videoSRC04_1920x1080_30":       {"frames":  96, "gop":  32},
+            "videoSRC05_1920x1080_25":       {"frames":  96, "gop":  32},
+            "videoSRC06_1920x1080_25":       {"frames":  96, "gop":  32},
+            "videoSRC07_1920x1080_25":       {"frames":  96, "gop":  32},
+            "videoSRC08_1920x1080_25":       {"frames":  96, "gop":  32},
+            "videoSRC09_1920x1080_25":       {"frames":  96, "gop":  32},
+            "videoSRC10_1920x1080_30":       {"frames":  96, "gop":  32},
+            "videoSRC11_1920x1080_30":       {"frames":  96, "gop":  32},
+            "videoSRC12_1920x1080_30":       {"frames":  96, "gop":  32},
+            "videoSRC13_1920x1080_30":       {"frames":  96, "gop":  32},
+            "videoSRC14_1920x1080_30":       {"frames":  96, "gop":  32},
+            "videoSRC15_1920x1080_30":       {"frames":  96, "gop":  32},
+            "videoSRC16_1920x1080_30":       {"frames":  96, "gop":  32},
+            "videoSRC17_1920x1080_24":       {"frames":  96, "gop":  32},
+            "videoSRC18_1920x1080_25":       {"frames":  96, "gop":  32},
+            "videoSRC19_1920x1080_30":       {"frames":  96, "gop":  32},
+            "videoSRC20_1920x1080_25":       {"frames":  96, "gop":  32},
+            "videoSRC21_1920x1080_24":       {"frames":  96, "gop":  32},
+            "videoSRC22_1920x1080_24":       {"frames":  96, "gop":  32},
+            "videoSRC23_1920x1080_24":       {"frames":  96, "gop":  32},
+            "videoSRC24_1920x1080_24":       {"frames":  96, "gop":  32},
+            "videoSRC25_1920x1080_24":       {"frames":  96, "gop":  32},
+            "videoSRC26_1920x1080_30":       {"frames":  96, "gop":  32},
+            "videoSRC27_1920x1080_30":       {"frames":  96, "gop":  32},
+            "videoSRC28_1920x1080_30":       {"frames":  96, "gop":  32},
+            "videoSRC29_1920x1080_24":       {"frames":  96, "gop":  32},
+            "videoSRC30_1920x1080_30":       {"frames":  96, "gop":  32}
+        }
+    },
+    "UVG": {
+        "test": 0,
+        "base_path": "/data/UVG/",
+        "sequences": {
+            "Beauty_1920x1080_120fps_420_8bit_YUV":              {"frames":  96, "gop":  32},
+            "Bosphorus_1920x1080_120fps_420_8bit_YUV":           {"frames":  96, "gop":  32},
+            "HoneyBee_1920x1080_120fps_420_8bit_YUV":            {"frames":  96, "gop":  32},
+            "Jockey_1920x1080_120fps_420_8bit_YUV":              {"frames":  96, "gop":  32},
+            "ReadySteadyGo_1920x1080_120fps_420_8bit_YUV":       {"frames":  96, "gop":  32},
+            "ShakeNDry_1920x1080_120fps_420_8bit_YUV":           {"frames":  96, "gop":  32},
+            "YachtRide_1920x1080_120fps_420_8bit_YUV":           {"frames":  96, "gop":  32}
+        }
+    }
+}
