@@ -1,7 +1,8 @@
 # Introduction
 
-Official Pytorch implementation for Neural Video Compression including:
+Official Pytorch implementation for Neural Video and Image Compression including:
 * [Deep Contextual Video Compression](https://proceedings.neurips.cc/paper/2021/file/96b250a90d3cf0868c83f8c965142d2a-Paper.pdf), NeurIPS 2021, in [this folder](./NeurIPS2021/).
+* [Temporal Context Mining for Learned Video Compression](https://ieeexplore.ieee.org/document/9941493), in IEEE Transactions on Multimedia, and [arxiv](https://arxiv.org/abs/2111.13850), in [this folder](./TMM_TCMVC/).
 * [Hybrid Spatial-Temporal Entropy Modelling for Neural Video Compression](https://arxiv.org/abs/2207.05894), ACM MM 2022, in [this folder](./ACMMM2022/).
   -  The first end-to-end neural video codec to exceed H.266 (VTM) using the highest compression ratio configuration, in terms of both PSNR and MS-SSIM.
   -  The first end-to-end neural video codec to achieve rate adjustment in single model.
@@ -31,6 +32,14 @@ If you find this work useful for your research, please cite:
   journal={Advances in Neural Information Processing Systems},
   volume={34},
   year={2021}
+}
+
+@article{sheng2022temporal,
+  title={Temporal context mining for learned video compression},
+  author={Sheng, Xihua and Li, Jiahao and Li, Bin and Li, Li and Liu, Dong and Lu, Yan},
+  journal={IEEE Transactions on Multimedia},
+  year={2022},
+  publisher={IEEE}
 }
 
 @inproceedings{li2022hybrid,
