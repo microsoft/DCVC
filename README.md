@@ -6,6 +6,9 @@ Official Pytorch implementation for Neural Video and Image Compression including
 * [Hybrid Spatial-Temporal Entropy Modelling for Neural Video Compression](https://arxiv.org/abs/2207.05894), ACM MM 2022, in [this folder](./ACMMM2022/).
   -  The first end-to-end neural video codec to exceed H.266 (VTM) using the highest compression ratio configuration, in terms of both PSNR and MS-SSIM.
   -  The first end-to-end neural video codec to achieve rate adjustment in single model.
+* [Neural Video Compression with Diverse Contexts](https://arxiv.org/abs/2302.14402), CVPR 2023, in [this folder](./CVPR2023/).
+  -  The first end-to-end neural video codec to exceed [ECM](https://jvet-experts.org/doc_end_user/documents/27_Teleconference/wg11/JVET-AA0006-v1.zip) using the highest compression ratio configuration, in terms of PSNR and MS-SSIM for RGB content.
+  -  The first end-to-end neural video codec to exceed ECM using the highest compression ratio configuration, in terms of PSNR for YUV420 content.
 * [EVC: Towards Real-Time Neural Image Compression with Mask Decay](https://openreview.net/forum?id=XUxad2Gj40n), ICLR 2023, in [this folder](./ICLR2023).
 
 # On the comparison
@@ -47,6 +50,14 @@ If you find this work useful for your research, please cite:
   author={Li, Jiahao and Li, Bin and Lu, Yan},
   booktitle={Proceedings of the 30th ACM International Conference on Multimedia},
   year={2022}
+}
+
+@inproceedings{li2023neural,
+  title={Neural Video Compression with Diverse Contexts},
+  author={Li, Jiahao and Li, Bin and Lu, Yan},
+  booktitle={{IEEE/CVF} Conference on Computer Vision and Pattern Recognition,
+             {CVPR} 2023, Vancouver, Canada, June 18-22, 2023},
+  year={2023}
 }
 
 @inproceedings{wang2023EVC,
