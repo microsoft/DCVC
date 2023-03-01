@@ -14,28 +14,29 @@ There are several key factors in encoding setting:
 
 * Please do not crop source sequence. When the spatial resolution of the source sequence is not supported, consider padding it.
 * Number of encoded frames should not be too small. Considering the test sequence length, we suggest encode 96 frames in each sequence. (The shortest sequence in MCL-JCV dataset has 120 frames).
-* Set to a reasonable intra period. Some of the previous papers uses 10 or 12 as intra period, which is not reasonable in practical applications. We suggest using 32 as intra period. When possible, setting it to 96 (only the first frame is encoded as intra frame) is also desired.
+* Set to a reasonable intra period. Some of the previous papers uses 10 or 12 as intra period, which is not reasonable in practical applications. We suggest using 32 as intra period. When possible, setting it to 96 or -1 (only the first frame is encoded as intra frame) is also desired.
 * Make sure the intra frame is pure intra frame. Which can be decoded independent of other frames. Intra frame could also be used as a decoding refresh point.
 * Both low delay coding structure (without waiting for future frames when encoding/decoding current frame) and hierarchical-B coding structure are welcome to be tested.
 
 Here is the summary on the coding setting
 
-|                    | Not suggested | Suggested |
-| ------------------ | ------------- | --------- |
-| spatial resolution | crop          | pad       |
-| intra period       | 10, 12        | 32, 96    |
+|                    | Not suggested | Suggested  |
+| ------------------ | ------------- | ---------- |
+| spatial resolution | crop          | pad        |
+| intra period       | 10, 12        | 32, 96, -1 |
 
 ## Traditional codec anchors
 
 When comparing with traditional codecs, it is highly suggested to use the settings which could lead to the highest compression ratio for traditional codec. There are several key factors for traditional codecs:
 
+* We prefer comparing YUV420 content directly as traditional codecs are mostly optimized for it.
 * Use B frames (or low delay B frames) instead of P frames.
 * Use the suggested number of reference frames (e.g., 4 for low delay settings).
 * Use hierarchical QP settings. (all the three items above could lead to 27% gap)
 * Use 10-bit as internal bit-depth. (6% gap over 8-bit)
-* Use YUV420 when comparing for YUV420 source content and use YUV444 when comparing RGB content. (22% gap when using different color spaces)
+* Use YUV420 when comparing for YUV420 source content and use YUV444 when comparing RGB content. More details on the impact of different color spaces could be found at [this part](#suggested-test-pipeline-for-comparison).
 
-We suggest using the official reference software ([HM](https://vcgit.hhi.fraunhofer.de/jvet/HM), [VTM](https://vcgit.hhi.fraunhofer.de/jvet/VVCSoftware_VTM), and [ECM](https://jvet-experts.org/doc_end_user/documents/27_Teleconference/wg11/JVET-AA0006-v1.zip)) to generate tradition codec anchors. For low delay encoding, the suggested command lines are as follows. We suggest using HM-16.25, VTM-17.0, and ECM-5.0 as traditional codec reference. Using a more recent version is also preferred.
+We suggest using the official reference software ([HM](https://vcgit.hhi.fraunhofer.de/jvet/HM), [VTM](https://vcgit.hhi.fraunhofer.de/jvet/VVCSoftware_VTM), and [ECM](https://jvet-experts.org/doc_end_user/documents/27_Teleconference/wg11/JVET-AA0006-v1.zip)) to generate tradition codec anchors. For low delay encoding, the suggested command lines are as follows. We suggest using HM-16.25, VTM-17.0, and ECM-5.0 as traditional codec reference implementation. Using a more recent version is also preferred.
 
 ### Encoding for RGB content
 
@@ -50,7 +51,7 @@ Please note that ECM-5.0 has several bugs to support YUV444 encoding. You may ne
 | ECM-5.0  | encoder_lowdelay_ecm.cfg       |
 
 ```bash
-EncoderApp -c encoder_configuration.cfg -f 96 -q {qp} --IntraPeriod={intra_period} --InputFile={src_yuv} --SourceWidth={width} --SourceHeight={height} --FrameRate={frame_rate} --Level=6.2 --InputBitDepth=10 --InputChromaFormat=444 --ChromaFormatIDC=444 --DecodingRefreshType=2 -b {output.bin} -o {enc.yuv}
+EncoderApp -c encoder_configuration.cfg -f {frame_number} -q {qp} --IntraPeriod={intra_period} --InputFile={src_yuv} --SourceWidth={width} --SourceHeight={height} --FrameRate={frame_rate} --Level=6.2 --InputBitDepth=10 --InputChromaFormat=444 --ChromaFormatIDC=444 --DecodingRefreshType=2 -b {output.bin} -o {enc.yuv}
 ```
 
 ### Encoding for YUV420 content
@@ -62,7 +63,7 @@ EncoderApp -c encoder_configuration.cfg -f 96 -q {qp} --IntraPeriod={intra_perio
 | ECM-5.0  | encoder_lowdelay_ecm.cfg    |
 
 ```bash
-EncoderApp -c encoder_configuration.cfg -f 96 -q {qp} --IntraPeriod={intra_period} --InputFile={src_yuv} --SourceWidth={width} --SourceHeight={height} --FrameRate={frame_rate} --Level=6.2 --InputBitDepth=8 --DecodingRefreshType=2 -b {output.bin} -o {enc.yuv}
+EncoderApp -c encoder_configuration.cfg -f {frame_number} -q {qp} --IntraPeriod={intra_period} --InputFile={src_yuv} --SourceWidth={width} --SourceHeight={height} --FrameRate={frame_rate} --Level=6.2 --InputBitDepth=8 --DecodingRefreshType=2 -b {output.bin} -o {enc.yuv}
 ```
 
 ## Objective metrics
@@ -72,3 +73,17 @@ We suggest using PSNR and MS-SSIM as objective metrics when comparing different 
 ```math
 PSNR_{avg} = (6*PSNR_y + PSNR_u + PSNR_v) / 8
 ```
+
+## Suggested test pipeline for comparison
+
+### Suggested test pipeline for YUV420 content and RGB content
+
+We suggest using the following test pipelines for YUV420 content and RGB content.
+
+<img src="assets/test_pipeline.png" width="600">
+
+### Different test settings for RGB content
+
+Different test settings may lead to up to 32% bitrate increase for RGB content.
+
+<img src="assets/RGB_different_settings.png" width="600">
