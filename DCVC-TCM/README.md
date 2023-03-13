@@ -1,5 +1,5 @@
 # Introduction
-* Official Pytorch implementation for [Temporal Context Mining for Learned Video Compression](https://ieeexplore.ieee.org/document/9941493), in IEEE Transactions on Multimedia.
+* Official Pytorch implementation for DCVC-TCM: [**T**emporal **C**ontext **M**ining for Learned Video Compression](https://ieeexplore.ieee.org/document/9941493), in IEEE Transactions on Multimedia.
 * Arxiv version can be found [here](https://arxiv.org/abs/2111.13850).
 
 # Prerequisites

@@ -1,6 +1,6 @@
 # Introduction
 
-Official Pytorch implementation for [Hybrid Spatial-Temporal Entropy Modelling for Neural Video Compression](https://arxiv.org/abs/2207.05894), in ACM MM 2022.
+Official Pytorch implementation for DCVC-HEM: [**H**ybrid Spatial-Temporal **E**ntropy **M**odelling for Neural Video Compression](https://arxiv.org/abs/2207.05894), in ACM MM 2022.
 
 # Prerequisites
 * Python 3.8 and conda, get [Conda](https://www.anaconda.com/)
