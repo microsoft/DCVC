@@ -1,6 +1,6 @@
 # Introduction
 
-Official Pytorch implementation for [Neural Video Compression with Diverse Contexts](https://arxiv.org/abs/2302.14402), in CVPR 2023.
+Official Pytorch implementation for DCVC-DC: [Neural Video Compression with **D**iverse **C**ontexts](https://arxiv.org/abs/2302.14402), in CVPR 2023.
 
 # Prerequisites
 * Python 3.8 and conda, get [Conda](https://www.anaconda.com/)
