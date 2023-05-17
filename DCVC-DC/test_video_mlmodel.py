@@ -10,6 +10,7 @@ import time
 
 import torch
 import torch.nn.functional as F
+import torchvision.transforms as T
 import numpy as np
 from src.models.video_model import DMC
 from src.models.image_model import IntraNoAR
@@ -22,6 +23,9 @@ from src.transforms.functional import ycbcr444_to_420, ycbcr420_to_444
 from tqdm import tqdm
 from pytorch_msssim import ms_ssim
 
+from src.tetra.model_wrapper import *
+import coremltools as ct
+import tetra_hub as hub
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Example testing script")
@@ -51,6 +55,10 @@ def parse_args():
     parser.add_argument('--decoded_frame_path', type=str, default='decoded_frames')
     parser.add_argument('--output_path', type=str, required=True)
     parser.add_argument('--verbose', type=int, default=0)
+    parser.add_argument('--model_size', type=str, default="360p")
+    parser.add_argument('--test_mlmodel', action='store_true')
+    parser.add_argument('--mlmodel_compute_unit', type=str, default="cpu")
+    parser.set_defaults(test_mlmodel=False)
 
     args = parser.parse_args()
     return args
@@ -68,13 +76,96 @@ def PSNR(input1, input2):
     return psnr.item()
 
 
-def run_test(p_frame_net, i_frame_net, args):
+def init_models(args):
+    """
+     - init models for given arguments
+     - if model is not present locally, runs a profile job to download and cache converted model
+
+    """
+    i_frame_net = None
+    i_frame_mlmodel = None
+    p_frame_nets = []
+    p_frame_mlmodels = {}
+
+    q_in_ckpt = args['q_in_ckpt']
+    q_index = args['i_frame_q_index']
+    model_size = args['model_size']
+    compute_unit = ct.ComputeUnit.CPU_ONLY
+    if args['mlmodel_compute_unit'] == 'npu':
+        compute_unit = ct.ComputeUnit.ALL
+
+    input_shape = shape_map[model_size]
+
+    i_frame_net = IntraNoAR_wrapper(model_path=args['i_frame_model_path'], ec_thread=args["ec_thread"],
+        stream_part=args["stream_part_i"], inplace=False, q_in_ckpt=q_in_ckpt, q_index=q_index)
+    i_frame_net.eval()
+
+    x = torch.rand(input_shape)
+    padding_l, padding_r, padding_t, padding_b = get_padding_size(*input_shape[-2:], 16)
+    x_padded = torch.nn.functional.pad(
+        x,
+        (padding_l, padding_r, padding_t, padding_b),
+        mode="replicate",
+    )
+
+    device = hub.Device(name="Apple iPhone 14 Pro")
+    model_dir = 'models_yuv' if args['dist_in_yuv420'] else 'models'
+    if not os.path.exists(model_dir):
+        os.mkdir(model_dir)
+
+    if args['test_mlmodel']:
+        model_name = f'intra_no_ar_{model_size}_{q_in_ckpt}_{q_index}.mlmodel'
+        model_path = os.path.join(model_dir, model_name)
+        if os.path.exists(model_path):
+            i_frame_mlmodel = ct.models.MLModel(model_path, compute_units=compute_unit)
+        else:
+            traced_model = torch.jit.trace(i_frame_net, x_padded, check_trace=False, strict=False)
+            job = hub.submit_profile_job(model=traced_model,
+                                  name=model_name,
+                                  device=device,
+                                  input_shapes={ 'x':x_padded.shape })
+            i_frame_mlmodel = job.download_target_model()
+            i_frame_mlmodel.save(model_path)
+            i_frame_mlmodel = ct.models.MLModel(model_path, compute_units=compute_unit)
+
+    q_index = args['p_frame_q_index']
+    if not args['force_intra']:
+        job_dict = {}
+        for i in range(4):
+            p_frame_net_per_frame = DMC_wrapper(model_path=args['p_frame_model_path'], ec_thread=args["ec_thread"],
+                    stream_part=args["stream_part_p"], inplace=False, q_in_ckpt=q_in_ckpt, q_index=q_index, frame_idx=i)
+            p_frame_net_per_frame.eval()
+            p_frame_nets.append(p_frame_net_per_frame)
+
+            if args['test_mlmodel']:
+                model_name = f'dmc_{model_size}_{q_in_ckpt}_{q_index}_{i}.mlmodel'
+                model_path = os.path.join(model_dir, model_name)
+                if os.path.exists(model_path):
+                    p_frame_mlmodel = ct.models.MLModel(model_path, compute_units=compute_unit)
+                    p_frame_mlmodels[i] = p_frame_mlmodel
+                else:
+                    traced_model = torch.jit.trace(p_frame_net_per_frame, (x_padded, x_padded), check_trace=False, strict=False)
+                    job = hub.submit_profile_job(model=traced_model,
+                                        name=model_name,
+                                        device=device,
+                                        input_shapes={ 'x': x_padded.shape, 'ref_frame': x_padded.shape })
+                    job_dict[i] = (model_path, job)
+
+        for index, path_and_job in job_dict.items():
+            _model_path, _job = path_and_job
+            p_frame_mlmodel = _job.download_target_model()
+            p_frame_mlmodel.save(_model_path)
+            p_frame_mlmodel = ct.models.MLModel(model_path, compute_units=compute_unit)
+            p_frame_mlmodels[index] = p_frame_mlmodel
+
+    return i_frame_net, i_frame_mlmodel, p_frame_nets, p_frame_mlmodels
+
+def run_test(args):
     frame_num = args['frame_num']
     gop_size = args['gop_size']
     write_stream = 'write_stream' in args and args['write_stream']
     save_decoded_frame = 'save_decoded_frame' in args and args['save_decoded_frame']
     verbose = args['verbose'] if 'verbose' in args else 0
-    device = next(i_frame_net.parameters()).device
 
     if args['src_type'] == 'png':
         src_reader = PNGReader(args['src_path'], args['src_width'], args['src_height'])
@@ -104,6 +195,12 @@ def run_test(p_frame_net, i_frame_net, args):
     p_frame_number = 0
     overall_p_encoding_time = 0
     overall_p_decoding_time = 0
+    input_shape = shape_map[args['model_size']]
+    transform = T.Resize(input_shape[-2:])
+
+    i_frame_net, i_frame_mlmodel, p_frame_nets, p_frame_mlmodels = init_models(args)
+
+    device = next(i_frame_net.parameters()).device
     with torch.no_grad():
         for frame_idx in range(frame_num):
             frame_start_time = time.time()
@@ -111,6 +208,8 @@ def run_test(p_frame_net, i_frame_net, args):
                 y, uv = src_reader.read_one_frame(dst_format="420")
                 yuv = ycbcr420_to_444(y, uv, order=0)
                 x = np_image_to_tensor(yuv)
+                x = transform(torch.Tensor(x))
+                y, uv = ycbcr444_to_420(x.squeeze(0).numpy())
                 y = y[0, :, :]
                 u = uv[0, :, :]
                 v = uv[1, :, :]
@@ -118,6 +217,7 @@ def run_test(p_frame_net, i_frame_net, args):
                 rgb = src_reader.read_one_frame(dst_format="rgb")
                 x = np_image_to_tensor(rgb)
             x = x.to(device)
+
             pic_height = x.shape[2]
             pic_width = x.shape[3]
 
@@ -134,36 +234,58 @@ def run_test(p_frame_net, i_frame_net, args):
                 mode="replicate",
             )
 
+
+            if args['test_mlmodel']:
+                x_padded = x_padded.numpy()
+
             bin_path = os.path.join(args['bin_folder'], f"{frame_idx}.bin") \
                 if write_stream else None
 
+            # print('Frame: ', frame_idx, args['i_frame_q_index'], args['p_frame_q_index'], args['q_in_ckpt'])
             if frame_idx % gop_size == 0:
-                result = i_frame_net.encode_decode(x_padded, args['q_in_ckpt'],
-                                                   args['i_frame_q_index'], bin_path,
-                                                   pic_height=pic_height, pic_width=pic_width)
+                if i_frame_mlmodel is not None:
+                    mlmodel_results = i_frame_mlmodel.predict({'x':x_padded})
+                    results_xhat, results_bit = mlmodel_results['output_0'], mlmodel_results['output_1']
+                else:
+                    results_xhat, results_bit, *_ = i_frame_net(x_padded)
+                    # Using forward pass from model wrapper
+                    # result = i_frame_net.encode_decode(x_padded, args['q_in_ckpt'],
+                    #                                    args['i_frame_q_index'], bin_path,
+                    #                                    pic_height=pic_height, pic_width=pic_width)
                 dpb = {
-                    "ref_frame": result["x_hat"],
+                    "ref_frame": results_xhat,
                     "ref_feature": None,
                     "ref_mv_feature": None,
                     "ref_y": None,
                     "ref_mv_y": None,
                 }
-                recon_frame = result["x_hat"]
+                recon_frame = results_xhat
                 frame_types.append(0)
-                bits.append(result["bit"])
+                bits.append(results_bit.item())
             else:
-                result = p_frame_net.encode_decode(x_padded, dpb, args['q_in_ckpt'],
-                                                   args['i_frame_q_index'], bin_path,
-                                                   pic_height=pic_height, pic_width=pic_width,
-                                                   frame_idx=frame_idx % 4)
-                dpb = result["dpb"]
-                recon_frame = dpb["ref_frame"]
+                if len(p_frame_mlmodels) > 0:
+                    mlmodel_results = p_frame_mlmodels[frame_idx % 4].predict({'x':x_padded, 'ref_frame':dpb['ref_frame']})
+                    results_xhat = mlmodel_results['output_0']
+                    results_mv_feature = mlmodel_results['output_1']
+                    results_bits = mlmodel_results['output_2']
+                else:
+                    results_xhat, results_mv_feature, results_bits, _ = p_frame_nets[frame_idx % 4](x_padded, dpb['ref_frame'])
+                    # result = p_frame_net.encode_decode(x_padded, dpb, args['q_in_ckpt'],
+                    #                                    args['i_frame_q_index'], bin_path,
+                    #                                    pic_height=pic_height, pic_width=pic_width,
+                    #                                    frame_idx=frame_idx % 4)
+                    # dpb = result["dpb"]
+                    # recon_frame = dpb["ref_frame"]
+                dpb['ref_frame'] = results_xhat
+                dpb['ref_mv_feature'] = results_mv_feature
+                recon_frame = results_xhat
                 frame_types.append(1)
-                bits.append(result['bit'])
+                bits.append(results_bits.item())
                 p_frame_number += 1
-                overall_p_encoding_time += result['encoding_time']
-                overall_p_decoding_time += result['decoding_time']
+                # overall_p_encoding_time += result['encoding_time']
+                # overall_p_decoding_time += result['decoding_time']
 
+            recon_frame = torch.Tensor(recon_frame)
             recon_frame = recon_frame.clamp_(0, 1)
             x_hat = F.pad(recon_frame, (-padding_l, -padding_r, -padding_t, -padding_b))
             if args['dist_in_yuv420']:
@@ -237,13 +359,17 @@ def run_test(p_frame_net, i_frame_net, args):
     return log_result
 
 
-i_frame_net = None  # the model is initialized after each process is spawn, thus OK for multiprocess
-p_frame_net = None
-
+# i_frame_net = None  # the model is initialized after each process is spawn, thus OK for multiprocess
+# p_frame_net = None
+shape_map = {
+    "1080p" : (1, 3, 1080, 1920),
+    "720p" : (1, 3, 720, 1280),
+    "360p" : (1, 3, 360, 480)
+}
 
 def encode_one(args):
-    global i_frame_net
-    global p_frame_net
+    # global i_frame_net
+    # global p_frame_net
 
     sub_dir_name = args['video_path']
     bin_folder = os.path.join(args['stream_path'], sub_dir_name, str(args['rate_idx']))
@@ -260,7 +386,7 @@ def encode_one(args):
     args['bin_folder'] = bin_folder
     args['recon_path'] = recon_path
 
-    result = run_test(p_frame_net, i_frame_net, args)
+    result = run_test(args)
 
     result['ds_name'] = args['ds_name']
     result['video_path'] = args['video_path']
@@ -274,6 +400,11 @@ def worker(args):
 
 
 def init_func(args):
+    return
+
+    ### Skip init func:
+    # IntraNoAR and DMC accepts python scalar q_index which makes model non-traceble.
+    # Convert model here once we have updated models with q_index as torch tensor.
     torch.backends.cudnn.benchmark = False
     torch.use_deterministic_algorithms(True)
     torch.manual_seed(0)
@@ -293,10 +424,16 @@ def init_func(args):
     else:
         device = "cpu"
 
+    if args.model_size not in shape_map:
+        raise RuntimeError("fPlease provide correct model_size_to_test. Provided {args.model_size}.")
+
+    q_in_ckpt = args.q_in_ckpt
+    q_index = args.q_index
+    input_shape = shape_map[args.model_size]
     global i_frame_net
     i_state_dict = get_state_dict(args.i_frame_model_path)
     i_frame_net = IntraNoAR(ec_thread=args.ec_thread, stream_part=args.stream_part_i,
-                            inplace=True)
+                        inplace=True)
     i_frame_net.load_state_dict(i_state_dict)
     i_frame_net = i_frame_net.to(device)
     i_frame_net.eval()
@@ -429,6 +566,15 @@ def main():
                 cur_args['decoded_frame_path'] = f'{args.decoded_frame_path}'
                 cur_args['ds_name'] = ds_name
                 cur_args['verbose'] = args.verbose
+                cur_args['model_size'] = args.model_size
+                cur_args['force_intra'] = args.force_intra
+                cur_args['test_mlmodel'] = args.test_mlmodel
+                cur_args['mlmodel_compute_unit'] = args.mlmodel_compute_unit
+                cur_args['i_frame_model_path'] = args.i_frame_model_path
+                cur_args['p_frame_model_path'] = args.p_frame_model_path
+                cur_args['ec_thread'] = args.ec_thread
+                cur_args['stream_part_i'] = args.stream_part_i
+                cur_args['stream_part_p'] = args.stream_part_p
 
                 count_frames += cur_args['frame_num']
 
