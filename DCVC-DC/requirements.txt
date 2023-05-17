@@ -7,3 +7,5 @@ tensorboard
 tqdm
 bd-metric
 ptflops
+coremltools==6.2
+tetra-hub
