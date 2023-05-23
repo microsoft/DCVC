@@ -110,8 +110,7 @@ def init_models(args):
 
     device = hub.Device(name="Apple iPhone 14 Pro")
     model_dir = 'models_yuv' if args['dist_in_yuv420'] else 'models'
-    if not os.path.exists(model_dir):
-        os.mkdir(model_dir)
+    os.makedirs(model_dir, exist_ok=True)
 
     if args['test_mlmodel']:
         model_name = f'intra_no_ar_{model_size}_{q_in_ckpt}_{q_index}.mlmodel'
@@ -155,7 +154,7 @@ def init_models(args):
             _model_path, _job = path_and_job
             p_frame_mlmodel = _job.download_target_model()
             p_frame_mlmodel.save(_model_path)
-            p_frame_mlmodel = ct.models.MLModel(model_path, compute_units=compute_unit)
+            p_frame_mlmodel = ct.models.MLModel(_model_path, compute_units=compute_unit)
             p_frame_mlmodels[index] = p_frame_mlmodel
 
     return i_frame_net, i_frame_mlmodel, p_frame_nets, p_frame_mlmodels
