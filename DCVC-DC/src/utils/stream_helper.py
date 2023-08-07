@@ -137,3 +137,30 @@ def decode_p(inputpath):
         string = read_bytes(f, string_length)
 
     return q_in_ckpt, q_index, frame_idx, string
+
+def encode_p_complete(height, width, string, q_in_ckpt, q_index, frame_idx, output):
+    with Path(output).open("wb") as f:
+        string_length = len(string)
+
+        write_uints(f, (height, width))
+        write_uchars(f, ((q_in_ckpt << 7) + (q_index << 1),))
+        write_uchars(f, (frame_idx,))
+        write_uints(f, (string_length,))
+        write_bytes(f, string)
+
+
+def decode_p_complete(inputpath):
+    with Path(inputpath).open("rb") as f:
+        header = read_uints(f, 2)
+        height = header[0]
+        width = header[1]
+        flag = read_uchars(f, 1)[0]
+        q_in_ckpt = (flag >> 7) > 0
+        q_index = ((flag & 0x7f) >> 1)
+        frame_idx = read_uchars(f, 1)[0]
+
+        header = read_uints(f, 1)
+        string_length = header[0]
+        string = read_bytes(f, string_length)
+
+    return height, width, q_in_ckpt, q_index, frame_idx, string

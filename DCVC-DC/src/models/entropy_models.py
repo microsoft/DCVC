@@ -5,7 +5,6 @@ import numpy as np
 from torch import nn
 import torch.nn.functional as F
 
-
 class EntropyCoder():
     def __init__(self, ec_thread=False, stream_part=1):
         super().__init__()

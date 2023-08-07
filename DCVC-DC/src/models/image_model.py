@@ -250,3 +250,88 @@ class IntraNoAR(CompressionModel):
 
         x_hat = self.refine(self.dec(y_hat, curr_q_dec)).clamp_(0, 1)
         return {"x_hat": x_hat}
+
+    def compress_without_entropy_coder(self, x, q_in_ckpt, q_index):
+        curr_q_enc, _ = self.get_q_for_inference(q_in_ckpt, q_index)
+
+        y = self.enc(x, curr_q_enc)
+        y_pad, slice_shape = self.pad_for_y(y)
+        z = self.hyper_enc(y_pad)
+        z_hat = torch.round(z)
+
+        params = self.hyper_dec(z_hat)
+        params = self.y_prior_fusion(params)
+        params = self.slice_to_y(params, slice_shape)
+        y_q_w_0, y_q_w_1, y_q_w_2, y_q_w_3, \
+            scales_w_0, scales_w_1, scales_w_2, scales_w_3, y_hat = self.compress_four_part_prior(
+                y, params, self.y_spatial_prior_adaptor_1, self.y_spatial_prior_adaptor_2,
+                self.y_spatial_prior_adaptor_3, self.y_spatial_prior)
+
+        result = {
+            "bit_stream": None,
+            "y_hat": y_hat,
+            "z_hat": z_hat,
+            "y_q_w_0": y_q_w_0,
+            "scales_w_0": scales_w_0,
+            "y_q_w_1": y_q_w_1,
+            "scales_w_1": scales_w_1,
+            "y_q_w_2": y_q_w_2,
+            "scales_w_2": scales_w_2,
+            "y_q_w_3": y_q_w_3,
+            "scales_w_3": scales_w_3,
+        }
+        return result
+
+    def compress_entropy_coder(self, result_mlcompressor,
+                               pic_height, pic_width, q_in_ckpt, q_index, 
+                               output_path):
+
+        self.entropy_coder.reset()
+        self.bit_estimator_z.encode(result_mlcompressor['z_hat'])
+        self.gaussian_encoder.encode(result_mlcompressor['y_q_w_0'], result_mlcompressor['scales_w_0'])
+        self.gaussian_encoder.encode(result_mlcompressor['y_q_w_1'], result_mlcompressor['scales_w_1'])
+        self.gaussian_encoder.encode(result_mlcompressor['y_q_w_2'], result_mlcompressor['scales_w_2'])
+        self.gaussian_encoder.encode(result_mlcompressor['y_q_w_3'], result_mlcompressor['scales_w_3'])
+        self.entropy_coder.flush()
+
+        bit_stream = self.entropy_coder.get_encoded_stream()
+        encode_i(pic_height, pic_width, q_in_ckpt, q_index, bit_stream, output_path)
+        bit = filesize(output_path) * 8
+
+        result = {
+            "bit_stream": bit_stream,
+            "bit": bit,
+        }
+        return result
+
+    def decompress_without_entropy_coder(self, y_hat, q_in_ckpt, q_index):
+        _, curr_q_dec = self.get_q_for_inference(q_in_ckpt, q_index)
+        x_hat = self.refine(self.dec(y_hat, curr_q_dec)).clamp_(0, 1)
+        return {"x_hat": x_hat}
+
+    def decompress_entropy_coder(self, output_path):
+        height, width, q_in_ckpt, q_index, bit_stream = decode_i(output_path)
+        bit = filesize(output_path) * 8
+
+        dtype = next(self.parameters()).dtype
+        device = next(self.parameters()).device
+        _, curr_q_dec = self.get_q_for_inference(q_in_ckpt, q_index)
+
+        self.entropy_coder.set_stream(bit_stream)
+        z_size = get_downsampled_shape(height, width, 64)
+        y_height, y_width = get_downsampled_shape(height, width, 16)
+        slice_shape = self.get_to_y_slice_shape(y_height, y_width)
+        z_hat = self.bit_estimator_z.decode_stream(z_size, dtype, device)
+
+        params = self.hyper_dec(z_hat)
+        params = self.y_prior_fusion(params)
+        params = self.slice_to_y(params, slice_shape)
+        y_hat = self.decompress_four_part_prior(params,
+                                                self.y_spatial_prior_adaptor_1,
+                                                self.y_spatial_prior_adaptor_2,
+                                                self.y_spatial_prior_adaptor_3,
+                                                self.y_spatial_prior)
+        return {
+            "y_hat": y_hat,
+            "bit": bit,
+            }

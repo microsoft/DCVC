@@ -159,3 +159,34 @@ def generate_log_json(frame_num, frame_pixel_num, test_time, frame_types, bits, 
         log_result['ave_all_frame_msssim_v'] = (i_ssim_v + p_ssim_v) / frame_num
 
     return log_result
+
+def generate_log_json_simple(frame_num, frame_pixel_num, test_time, frame_types, bits, verbose=False):
+    i_bits = 0
+    p_bits = 0
+    i_num = 0
+    p_num = 0
+    for idx in range(frame_num):
+        if frame_types[idx] == 0:
+            i_bits += bits[idx]
+            i_num += 1
+        else:
+            p_bits += bits[idx]
+            p_num += 1
+
+    log_result = {}
+    log_result['frame_pixel_num'] = frame_pixel_num
+    log_result['i_frame_num'] = i_num
+    log_result['p_frame_num'] = p_num
+    log_result['ave_i_frame_bpp'] = i_bits / i_num / frame_pixel_num
+    if verbose:
+        log_result['frame_bpp'] = list(np.array(bits) / frame_pixel_num)
+        log_result['frame_type'] = frame_types
+    log_result['test_time'] = test_time
+    if p_num > 0:
+        total_p_pixel_num = p_num * frame_pixel_num
+        log_result['ave_p_frame_bpp'] = p_bits / total_p_pixel_num
+    else:
+        log_result['ave_p_frame_bpp'] = 0
+    log_result['ave_all_frame_bpp'] = (i_bits + p_bits) / (frame_num * frame_pixel_num)
+
+    return log_result

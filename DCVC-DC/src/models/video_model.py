@@ -12,7 +12,7 @@ from .video_net import ME_Spynet, ResBlock, UNet, bilinearupsacling, bilineardow
     get_hyper_enc_dec_models, flow_warp
 from .layers import subpel_conv3x3, subpel_conv1x1, DepthConvBlock, \
     ResidualBlockWithStride, ResidualBlockUpsample
-from ..utils.stream_helper import get_downsampled_shape, encode_p, decode_p, filesize, \
+from ..utils.stream_helper import get_downsampled_shape, encode_p, decode_p, encode_p_complete, decode_p_complete, filesize, \
     get_state_dict
 
 
@@ -626,3 +626,146 @@ class DMC(CompressionModel):
                 "bit_mv_y": bit_mv_y,
                 "bit_mv_z": bit_mv_z,
                 }
+
+    def compress_without_entropy_coder(self, x, dpb, q_in_ckpt, q_index, frame_idx):
+        # pic_width and pic_height may be different from x's size. x here is after padding
+        # x_hat has the same size with x
+        mv_y_q_enc, mv_y_q_dec, y_q_enc, _ = self.get_q_for_inference(q_in_ckpt, q_index)
+        mv_y = self.motion_estimation_and_mv_encoding(x, dpb, mv_y_q_enc)
+        mv_y_pad, slice_shape = self.pad_for_y(mv_y)
+        mv_z = self.mv_hyper_prior_encoder(mv_y_pad)
+        mv_z_hat = torch.round(mv_z)
+        mv_params = self.mv_prior_param_decoder(mv_z_hat, dpb, slice_shape)
+        mv_y_q_w_0, mv_y_q_w_1, mv_y_q_w_2, mv_y_q_w_3, \
+            mv_scales_w_0, mv_scales_w_1, mv_scales_w_2, mv_scales_w_3, mv_y_hat = \
+            self.compress_four_part_prior(
+                mv_y, mv_params,
+                self.mv_y_spatial_prior_adaptor_1, self.mv_y_spatial_prior_adaptor_2,
+                self.mv_y_spatial_prior_adaptor_3, self.mv_y_spatial_prior)
+
+        mv_hat, mv_feature = self.mv_decoder(mv_y_hat, mv_y_q_dec)
+        context1, context2, context3, _ = self.motion_compensation(dpb, mv_hat, frame_idx)
+
+        y = self.contextual_encoder(x, context1, context2, context3, y_q_enc)
+        y_pad, slice_shape = self.pad_for_y(y)
+        z = self.contextual_hyper_prior_encoder(y_pad)
+        z_hat = torch.round(z)
+        params = self.res_prior_param_decoder(z_hat, dpb, context3, slice_shape)
+        y_q_w_0, y_q_w_1, y_q_w_2, y_q_w_3, \
+            scales_w_0, scales_w_1, scales_w_2, scales_w_3, y_hat = \
+            self.compress_four_part_prior(
+                y, params, self.y_spatial_prior_adaptor_1, self.y_spatial_prior_adaptor_2,
+                self.y_spatial_prior_adaptor_3, self.y_spatial_prior)
+
+        result = {
+            "dpb": {
+                "ref_mv_feature": mv_feature,
+                "ref_y": y_hat,
+                "ref_mv_y": mv_y_hat,
+            },
+            "context1": context1, 
+            "context2": context2, 
+            "context3": context3, 
+            "z_hat": z_hat,
+            "y_q_w_0": y_q_w_0,
+            "y_q_w_1": y_q_w_1,
+            "y_q_w_2": y_q_w_2,
+            "y_q_w_3": y_q_w_3,
+            "scales_w_0": scales_w_0,
+            "scales_w_1": scales_w_1,
+            "scales_w_2": scales_w_2,
+            "scales_w_3": scales_w_3,
+            "mv_z_hat": mv_z_hat,
+            "mv_y_q_w_0": mv_y_q_w_0,
+            "mv_y_q_w_1": mv_y_q_w_1,
+            "mv_y_q_w_2": mv_y_q_w_2,
+            "mv_y_q_w_3": mv_y_q_w_3,
+            "mv_scales_w_0": mv_scales_w_0,
+            "mv_scales_w_1": mv_scales_w_1,
+            "mv_scales_w_2": mv_scales_w_2,
+            "mv_scales_w_3": mv_scales_w_3,
+        }
+        return result
+
+    def compress_entropy_coder(self, result_mlcompressor,
+                               pic_height, pic_width, q_in_ckpt, q_index, frame_idx,
+                               output_path):
+
+        self.entropy_coder.reset()
+        self.bit_estimator_z_mv.encode(result_mlcompressor['mv_z_hat'])
+        self.bit_estimator_z.encode(result_mlcompressor['z_hat'])
+        self.gaussian_encoder.encode(result_mlcompressor['mv_y_q_w_0'], result_mlcompressor['mv_scales_w_0'])
+        self.gaussian_encoder.encode(result_mlcompressor['mv_y_q_w_1'], result_mlcompressor['mv_scales_w_1'])
+        self.gaussian_encoder.encode(result_mlcompressor['mv_y_q_w_2'], result_mlcompressor['mv_scales_w_2'])
+        self.gaussian_encoder.encode(result_mlcompressor['mv_y_q_w_3'], result_mlcompressor['mv_scales_w_3'])
+        self.gaussian_encoder.encode(result_mlcompressor['y_q_w_0'], result_mlcompressor['scales_w_0'])
+        self.gaussian_encoder.encode(result_mlcompressor['y_q_w_1'], result_mlcompressor['scales_w_1'])
+        self.gaussian_encoder.encode(result_mlcompressor['y_q_w_2'], result_mlcompressor['scales_w_2'])
+        self.gaussian_encoder.encode(result_mlcompressor['y_q_w_3'], result_mlcompressor['scales_w_3'])
+        self.entropy_coder.flush()
+
+        bit_stream = self.entropy_coder.get_encoded_stream()
+        encode_p_complete(pic_height, pic_width, bit_stream, q_in_ckpt, q_index, frame_idx, output_path)
+        bits = filesize(output_path) * 8
+
+        result = {
+            "bit_stream": bit_stream,
+            "bit": bits,
+        }
+        return result
+
+    def decompress_entropy_coder(self, dpb, output_path):
+        pic_height, pic_width, q_in_ckpt, q_index, frame_idx, string = decode_p_complete(output_path)
+        bits = filesize(output_path) * 8
+
+        _, mv_y_q_dec, _, _ = self.get_q_for_inference(q_in_ckpt, q_index)
+
+        self.entropy_coder.set_stream(string)
+        dtype = next(self.parameters()).dtype
+        device = next(self.parameters()).device
+        z_size = get_downsampled_shape(pic_height, pic_width, 64)
+        y_height, y_width = get_downsampled_shape(pic_height, pic_width, 16)
+        slice_shape = self.get_to_y_slice_shape(y_height, y_width)
+        mv_z_hat = self.bit_estimator_z_mv.decode_stream(z_size, dtype, device)
+        z_hat = self.bit_estimator_z.decode_stream(z_size, dtype, device)
+        mv_params = self.mv_prior_param_decoder(mv_z_hat, dpb, slice_shape)
+        mv_y_hat = self.decompress_four_part_prior(mv_params,
+                                                   self.mv_y_spatial_prior_adaptor_1,
+                                                   self.mv_y_spatial_prior_adaptor_2,
+                                                   self.mv_y_spatial_prior_adaptor_3,
+                                                   self.mv_y_spatial_prior)
+
+        mv_hat, mv_feature = self.mv_decoder(mv_y_hat, mv_y_q_dec)
+        context1, context2, context3, _ = self.motion_compensation(dpb, mv_hat, frame_idx)
+
+        params = self.res_prior_param_decoder(z_hat, dpb, context3, slice_shape)
+        y_hat = self.decompress_four_part_prior(params,
+                                                self.y_spatial_prior_adaptor_1,
+                                                self.y_spatial_prior_adaptor_2,
+                                                self.y_spatial_prior_adaptor_3,
+                                                self.y_spatial_prior)
+
+        return {
+            "dpb": {
+                "ref_mv_feature": mv_feature,
+                "ref_y": y_hat,
+                "ref_mv_y": mv_y_hat,
+            },
+            "context1": context1,
+            "context2": context2,
+            "context3": context3,
+            "bit": bits,
+        }
+
+    def decompress_without_entropy_coder(self, result, q_in_ckpt, q_index):
+        _, _, _, y_q_dec = self.get_q_for_inference(q_in_ckpt, q_index)
+        x_hat, feature = self.get_recon_and_feature(
+                                result["dpb"]['ref_y'], 
+                                result['context1'], 
+                                result['context2'], 
+                                result['context3'], 
+                                y_q_dec)
+        result["dpb"]["ref_frame"] = x_hat
+        result["dpb"]["ref_feature"] = feature
+        return result
+
