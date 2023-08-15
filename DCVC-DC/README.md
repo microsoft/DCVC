@@ -92,6 +92,9 @@ make -j
 
 * Download [Our pretrained models](https://1drv.ms/u/s!AozfVVwtWWYoiWdwDhEkZMIfpon5?e=JcGri5) and put them into ./checkpoints folder.
 * Or run the script in ./checkpoints directly to download the model.
+* There are 6 models:
+  * \*image\* are image models and \*video\* are video models.
+  * \*psnr\* are models optimized for PSNR, \*ssim\* are models optimized for MS-SSIM, \*yuv420_psnr\* are models optimized for PSNR of YUV420 content.
 
 # Test the models
 
