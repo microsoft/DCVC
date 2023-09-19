@@ -117,4 +117,4 @@ class DMC_wrapper(nn.Module):
         #         "bit_mv_y": bit_mv_y,
         #         "bit_mv_z": bit_mv_z,
         #         }
-        return encoded["dpb"]["ref_frame"], encoded["dpb"]["ref_mv_feature"], encoded["bit"], encoded["bpp"]
+        return encoded["dpb"]["ref_frame"], encoded["bit"], encoded["bpp"]

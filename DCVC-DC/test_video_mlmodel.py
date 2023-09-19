@@ -26,6 +26,10 @@ from pytorch_msssim import ms_ssim
 from src.tetra.model_wrapper import *
 import coremltools as ct
 import tetra_hub as hub
+from tetra_hub.util.zipped_model import unzip_model
+import shutil
+import tempfile
+
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Example testing script")
@@ -76,16 +80,29 @@ def PSNR(input1, input2):
     return psnr.item()
 
 
+def get_i_frame_model_key(args):
+    q_in_ckpt = args['q_in_ckpt']
+    q_index = args['i_frame_q_index']
+    model_size = args['model_size']
+    return f"{model_size}_{q_in_ckpt}_{q_index}"
+
+def get_p_frame_model_key(args, frame_index):
+    q_in_ckpt = args['q_in_ckpt']
+    q_index = args['p_frame_q_index']
+    model_size = args['model_size']
+    return f"{model_size}_{q_in_ckpt}_{q_index}_{frame_index % 4}"
+
 def init_models(args):
     """
      - init models for given arguments
      - if model is not present locally, runs a profile job to download and cache converted model
 
     """
+
     i_frame_net = None
-    i_frame_mlmodel = None
+    i_frame_models = {}
     p_frame_nets = []
-    p_frame_mlmodels = {}
+    p_frame_models = {}
 
     q_in_ckpt = args['q_in_ckpt']
     q_index = args['i_frame_q_index']
@@ -112,20 +129,26 @@ def init_models(args):
     model_dir = 'models_yuv' if args['dist_in_yuv420'] else 'models'
     os.makedirs(model_dir, exist_ok=True)
 
+    model_key = get_i_frame_model_key(args)
     if args['test_mlmodel']:
-        model_name = f'intra_no_ar_{model_size}_{q_in_ckpt}_{q_index}.mlmodel'
+        model_name = f'intra_no_ar_{model_key}.mlpackage'
         model_path = os.path.join(model_dir, model_name)
         if os.path.exists(model_path):
-            i_frame_mlmodel = ct.models.MLModel(model_path, compute_units=compute_unit)
+            i_frame_models[model_key] = model_path
         else:
             traced_model = torch.jit.trace(i_frame_net, x_padded, check_trace=False, strict=False)
             job = hub.submit_profile_job(model=traced_model,
                                   name=model_name,
                                   device=device,
-                                  input_shapes={ 'x':x_padded.shape })
-            i_frame_mlmodel = job.download_target_model()
-            i_frame_mlmodel.save(model_path)
-            i_frame_mlmodel = ct.models.MLModel(model_path, compute_units=compute_unit)
+                                  input_shapes={ 'x':x_padded.shape },
+                                  options="--enable_mlpackage")
+            with tempfile.TemporaryDirectory() as tmodel_dir:
+                downloaded_model_path = job.download_target_model(tmodel_dir)
+                extracted_model_path = unzip_model(downloaded_model_path, tmodel_dir)
+                shutil.copytree(extracted_model_path, model_path)
+                i_frame_models[model_key] = model_path
+    else:
+        i_frame_models[model_key] = i_frame_net
 
     q_index = args['p_frame_q_index']
     if not args['force_intra']:
@@ -136,28 +159,30 @@ def init_models(args):
             p_frame_net_per_frame.eval()
             p_frame_nets.append(p_frame_net_per_frame)
 
+            model_key = get_p_frame_model_key(args, i)
             if args['test_mlmodel']:
-                model_name = f'dmc_{model_size}_{q_in_ckpt}_{q_index}_{i}.mlmodel'
+                model_name = f'dmc_{model_key}.mlpackage'
                 model_path = os.path.join(model_dir, model_name)
                 if os.path.exists(model_path):
-                    p_frame_mlmodel = ct.models.MLModel(model_path, compute_units=compute_unit)
-                    p_frame_mlmodels[i] = p_frame_mlmodel
+                    p_frame_models[model_key] = model_path
                 else:
                     traced_model = torch.jit.trace(p_frame_net_per_frame, (x_padded, x_padded), check_trace=False, strict=False)
                     job = hub.submit_profile_job(model=traced_model,
                                         name=model_name,
                                         device=device,
-                                        input_shapes={ 'x': x_padded.shape, 'ref_frame': x_padded.shape })
+                                        input_shapes={ 'x': x_padded.shape, 'ref_frame': x_padded.shape },
+                                        options="--enable_mlpackage")
                     job_dict[i] = (model_path, job)
 
         for index, path_and_job in job_dict.items():
             _model_path, _job = path_and_job
-            p_frame_mlmodel = _job.download_target_model()
-            p_frame_mlmodel.save(_model_path)
-            p_frame_mlmodel = ct.models.MLModel(_model_path, compute_units=compute_unit)
-            p_frame_mlmodels[index] = p_frame_mlmodel
+            with tempfile.TemporaryDirectory() as tmodel_dir:
+                downloaded_model_path = _job.download_target_model(tmodel_dir)
+                extracted_model_path = unzip_model(downloaded_model_path, tmodel_dir)
+                shutil.copytree(extracted_model_path, _model_path)
+                p_frame_models[model_key] = _model_path
 
-    return i_frame_net, i_frame_mlmodel, p_frame_nets, p_frame_mlmodels
+    return i_frame_models, p_frame_models
 
 def run_test(args):
     frame_num = args['frame_num']
@@ -197,9 +222,16 @@ def run_test(args):
     input_shape = shape_map[args['model_size']]
     transform = T.Resize(input_shape[-2:])
 
-    i_frame_net, i_frame_mlmodel, p_frame_nets, p_frame_mlmodels = init_models(args)
+    i_frame_models, p_frame_models = init_models(args)
+    compute_unit = ct.ComputeUnit.CPU_ONLY
+    if args['mlmodel_compute_unit'] == 'npu':
+        compute_unit = ct.ComputeUnit.ALL
 
-    device = next(i_frame_net.parameters()).device
+    dpb = {}
+    device = 'cpu'
+    if not args['test_mlmodel']:
+        device = next(i_frame_models.values()[0]).device
+
     with torch.no_grad():
         for frame_idx in range(frame_num):
             frame_start_time = time.time()
@@ -233,24 +265,23 @@ def run_test(args):
                 mode="replicate",
             )
 
-
             if args['test_mlmodel']:
                 x_padded = x_padded.numpy()
 
+            padded_ht, padded_wt = x_padded.shape[-2], x_padded.shape[-1]
             bin_path = os.path.join(args['bin_folder'], f"{frame_idx}.bin") \
                 if write_stream else None
 
-            # print('Frame: ', frame_idx, args['i_frame_q_index'], args['p_frame_q_index'], args['q_in_ckpt'])
             if frame_idx % gop_size == 0:
-                if i_frame_mlmodel is not None:
-                    mlmodel_results = i_frame_mlmodel.predict({'x':x_padded})
+                if args['test_mlmodel']:
+                    model = i_frame_models[get_i_frame_model_key(args)]
+                    model = ct.models.MLModel(model, compute_units=compute_unit)
+                    mlmodel_results = model.predict({'x':x_padded})
                     results_xhat, results_bit = mlmodel_results['output_0'], mlmodel_results['output_1']
                 else:
-                    results_xhat, results_bit, *_ = i_frame_net(x_padded)
-                    # Using forward pass from model wrapper
-                    # result = i_frame_net.encode_decode(x_padded, args['q_in_ckpt'],
-                    #                                    args['i_frame_q_index'], bin_path,
-                    #                                    pic_height=pic_height, pic_width=pic_width)
+                    model = i_frame_models[get_i_frame_model_key(args)]
+                    results_xhat, results_bit, *_ = model(x_padded)
+                results_bit *= (padded_ht * padded_wt)
                 dpb = {
                     "ref_frame": results_xhat,
                     "ref_feature": None,
@@ -262,21 +293,18 @@ def run_test(args):
                 frame_types.append(0)
                 bits.append(results_bit.item())
             else:
-                if len(p_frame_mlmodels) > 0:
-                    mlmodel_results = p_frame_mlmodels[frame_idx % 4].predict({'x':x_padded, 'ref_frame':dpb['ref_frame']})
+                if args['test_mlmodel'] and len(p_frame_models) > 0:
+                    model = p_frame_models[get_p_frame_model_key(args, frame_idx % 4)]
+                    model = ct.models.MLModel(model, compute_units=compute_unit)
+                    mlmodel_results = model.predict({'x':x_padded, 'ref_frame':dpb['ref_frame']})
                     results_xhat = mlmodel_results['output_0']
-                    results_mv_feature = mlmodel_results['output_1']
-                    results_bits = mlmodel_results['output_2']
+                    results_bits = mlmodel_results['output_1']
                 else:
-                    results_xhat, results_mv_feature, results_bits, _ = p_frame_nets[frame_idx % 4](x_padded, dpb['ref_frame'])
-                    # result = p_frame_net.encode_decode(x_padded, dpb, args['q_in_ckpt'],
-                    #                                    args['i_frame_q_index'], bin_path,
-                    #                                    pic_height=pic_height, pic_width=pic_width,
-                    #                                    frame_idx=frame_idx % 4)
-                    # dpb = result["dpb"]
-                    # recon_frame = dpb["ref_frame"]
+                    model = p_frame_models[get_p_frame_model_key(args, frame_idx)]
+                    results_xhat, results_mv_feature, results_bits, _ = model(x_padded, dpb['ref_frame'])
+
+                results_bit *= (padded_ht * padded_wt)
                 dpb['ref_frame'] = results_xhat
-                dpb['ref_mv_feature'] = results_mv_feature
                 recon_frame = results_xhat
                 frame_types.append(1)
                 bits.append(results_bits.item())

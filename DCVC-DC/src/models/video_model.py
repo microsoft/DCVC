@@ -602,11 +602,11 @@ class DMC(CompressionModel):
         bpp_mv_z = torch.sum(bits_mv_z, dim=(1, 2, 3)) / pixel_num
 
         bpp = bpp_y + bpp_z + bpp_mv_y + bpp_mv_z
-        bit = torch.sum(bpp) * pixel_num
-        bit_y = torch.sum(bpp_y) * pixel_num
-        bit_z = torch.sum(bpp_z) * pixel_num
-        bit_mv_y = torch.sum(bpp_mv_y) * pixel_num
-        bit_mv_z = torch.sum(bpp_mv_z) * pixel_num
+        bit = torch.sum(bpp) # * pixel_num
+        bit_y = torch.sum(bpp_y) # * pixel_num
+        bit_z = torch.sum(bpp_z) # * pixel_num
+        bit_mv_y = torch.sum(bpp_mv_y) # * pixel_num
+        bit_mv_z = torch.sum(bpp_mv_z) # * pixel_num
 
         return {"bpp_mv_y": bpp_mv_y,
                 "bpp_mv_z": bpp_mv_z,
@@ -663,9 +663,9 @@ class DMC(CompressionModel):
                 "ref_y": y_hat,
                 "ref_mv_y": mv_y_hat,
             },
-            "context1": context1, 
-            "context2": context2, 
-            "context3": context3, 
+            "context1": context1,
+            "context2": context2,
+            "context3": context3,
             "z_hat": z_hat,
             "y_q_w_0": y_q_w_0,
             "y_q_w_1": y_q_w_1,
@@ -760,10 +760,10 @@ class DMC(CompressionModel):
     def decompress_without_entropy_coder(self, result, q_in_ckpt, q_index):
         _, _, _, y_q_dec = self.get_q_for_inference(q_in_ckpt, q_index)
         x_hat, feature = self.get_recon_and_feature(
-                                result["dpb"]['ref_y'], 
-                                result['context1'], 
-                                result['context2'], 
-                                result['context3'], 
+                                result["dpb"]['ref_y'],
+                                result['context1'],
+                                result['context2'],
+                                result['context3'],
                                 y_q_dec)
         result["dpb"]["ref_frame"] = x_hat
         result["dpb"]["ref_feature"] = feature

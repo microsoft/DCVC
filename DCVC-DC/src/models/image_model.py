@@ -137,7 +137,10 @@ class IntraNoAR(CompressionModel):
         pixel_num = H * W
         bpp_y = torch.sum(bits_y, dim=(1, 2, 3)) / pixel_num
         bpp_z = torch.sum(bits_z, dim=(1, 2, 3)) / pixel_num
-        bits = torch.sum(bpp_y + bpp_z) * pixel_num
+        # Because of pixel_num multiplier, bits becomes large
+        # Take this out and multiply on the caller side instead.
+        # bits = torch.sum(bpp_y + bpp_z) * pixel_num
+        bits = torch.sum(bpp_y + bpp_z)
         bpp = bpp_y + bpp_z
 
         return {
@@ -283,7 +286,7 @@ class IntraNoAR(CompressionModel):
         return result
 
     def compress_entropy_coder(self, result_mlcompressor,
-                               pic_height, pic_width, q_in_ckpt, q_index, 
+                               pic_height, pic_width, q_in_ckpt, q_index,
                                output_path):
 
         self.entropy_coder.reset()
