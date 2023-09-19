@@ -173,6 +173,8 @@ def init_models(args):
                                         input_shapes={ 'x': x_padded.shape, 'ref_frame': x_padded.shape },
                                         options="--enable_mlpackage")
                     job_dict[i] = (model_path, job)
+            else:
+                p_frame_models[model_key] = p_frame_net_per_frame
 
         for index, path_and_job in job_dict.items():
             _model_path, _job = path_and_job
@@ -228,9 +230,9 @@ def run_test(args):
         compute_unit = ct.ComputeUnit.ALL
 
     dpb = {}
-    device = 'cpu'
-    if not args['test_mlmodel']:
-        device = next(i_frame_models.values()[0]).device
+    # device = 'cpu'
+    # if not args['test_mlmodel']:
+    #     device = next(i_frame_models.values()[0]).device
 
     with torch.no_grad():
         for frame_idx in range(frame_num):
@@ -247,7 +249,7 @@ def run_test(args):
             else:
                 rgb = src_reader.read_one_frame(dst_format="rgb")
                 x = np_image_to_tensor(rgb)
-            x = x.to(device)
+            # x = x.to(device)
 
             pic_height = x.shape[2]
             pic_width = x.shape[3]
@@ -301,7 +303,7 @@ def run_test(args):
                     results_bits = mlmodel_results['output_1']
                 else:
                     model = p_frame_models[get_p_frame_model_key(args, frame_idx)]
-                    results_xhat, results_mv_feature, results_bits, _ = model(x_padded, dpb['ref_frame'])
+                    results_xhat, results_bits, _ = model(x_padded, dpb['ref_frame'])
 
                 results_bit *= (padded_ht * padded_wt)
                 dpb['ref_frame'] = results_xhat
