@@ -104,15 +104,18 @@ class IntraNoAR(CompressionModel):
         self.q_scale_dec = nn.Parameter(torch.ones((anchor_num, 1, 1, 1)))
         self.q_scale_dec_fine = None
 
-    def get_q_for_inference(self, q_in_ckpt, q_index):
+    def get_q_for_inference(self, q_in_ckpt, q_index, dummy_input):
+        q_index = q_index.type(torch.long)
         q_scale_enc = self.q_scale_enc[:, 0, 0, 0] if q_in_ckpt else self.q_scale_enc_fine
+        q_scale_enc = torch.add(torch.Tensor(q_scale_enc), dummy_input)
         curr_q_enc = self.get_curr_q(q_scale_enc, self.q_basic_enc, q_index=q_index)
         q_scale_dec = self.q_scale_dec[:, 0, 0, 0] if q_in_ckpt else self.q_scale_dec_fine
+        q_scale_dec = torch.add(torch.Tensor(q_scale_dec), dummy_input)
         curr_q_dec = self.get_curr_q(q_scale_dec, self.q_basic_dec, q_index=q_index)
         return curr_q_enc, curr_q_dec
 
-    def forward(self, x, q_in_ckpt=False, q_index=None):
-        curr_q_enc, curr_q_dec = self.get_q_for_inference(q_in_ckpt, q_index)
+    def forward(self, x, q_in_ckpt=False, q_index=torch.tensor([0,]), dummy_input=torch.Tensor([0,])):
+        curr_q_enc, curr_q_dec = self.get_q_for_inference(q_in_ckpt, q_index, dummy_input)
 
         y = self.enc(x, curr_q_enc)
         y_pad, slice_shape = self.pad_for_y(y)

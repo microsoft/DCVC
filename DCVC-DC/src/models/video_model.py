@@ -345,7 +345,7 @@ class DMC(CompressionModel):
             feature = self.feature_adaptor_I(dpb["ref_frame"])
         else:
             index = index % 4
-            index_map = [0, 1, 0, 2]
+            index_map = torch.Tensor([0, 1, 0, 2]).type(torch.long)
             index = index_map[index]
             feature = self.feature_adaptor[index](dpb["ref_feature"])
         return self.feature_extractor(feature)
@@ -410,22 +410,27 @@ class DMC(CompressionModel):
         mv_y = self.mv_encoder(est_mv, ref_mv_feature, mv_y_q_enc)
         return mv_y
 
-    def get_q_for_inference(self, q_in_ckpt, q_index):
+    def get_q_for_inference(self, q_in_ckpt, q_index, dummy_input):
+        q_index = q_index.type(torch.long)
         mv_y_q_scale_enc = self.mv_y_q_scale_enc if q_in_ckpt else self.mv_y_q_scale_enc_fine
+        mv_y_q_scale_enc = torch.add(torch.Tensor(mv_y_q_scale_enc), dummy_input)
         mv_y_q_enc = self.get_curr_q(mv_y_q_scale_enc, self.mv_y_q_basic_enc, q_index=q_index)
         mv_y_q_scale_dec = self.mv_y_q_scale_dec if q_in_ckpt else self.mv_y_q_scale_dec_fine
+        mv_y_q_scale_dec = torch.add(torch.Tensor(mv_y_q_scale_dec), dummy_input)
         mv_y_q_dec = self.get_curr_q(mv_y_q_scale_dec, self.mv_y_q_basic_dec, q_index=q_index)
 
         y_q_scale_enc = self.y_q_scale_enc if q_in_ckpt else self.y_q_scale_enc_fine
+        y_q_scale_enc = torch.add(torch.Tensor(y_q_scale_enc), dummy_input)
         y_q_enc = self.get_curr_q(y_q_scale_enc, self.y_q_basic_enc, q_index=q_index)
         y_q_scale_dec = self.y_q_scale_dec if q_in_ckpt else self.y_q_scale_dec_fine
+        y_q_scale_dec = torch.add(torch.Tensor(y_q_scale_dec), dummy_input)
         y_q_dec = self.get_curr_q(y_q_scale_dec, self.y_q_basic_dec, q_index=q_index)
         return mv_y_q_enc, mv_y_q_dec, y_q_enc, y_q_dec
 
-    def compress(self, x, dpb, q_in_ckpt, q_index, frame_idx):
+    def compress(self, x, dpb, q_in_ckpt, q_index, frame_idx, dummy_input):
         # pic_width and pic_height may be different from x's size. x here is after padding
         # x_hat has the same size with x
-        mv_y_q_enc, mv_y_q_dec, y_q_enc, y_q_dec = self.get_q_for_inference(q_in_ckpt, q_index)
+        mv_y_q_enc, mv_y_q_dec, y_q_enc, y_q_dec = self.get_q_for_inference(q_in_ckpt, q_index, dummy_input)
         mv_y = self.motion_estimation_and_mv_encoding(x, dpb, mv_y_q_enc)
         mv_y_pad, slice_shape = self.pad_for_y(mv_y)
         mv_z = self.mv_hyper_prior_encoder(mv_y_pad)
@@ -556,8 +561,8 @@ class DMC(CompressionModel):
         }
         return result
 
-    def forward_one_frame(self, x, dpb, q_in_ckpt=False, q_index=None, frame_idx=0):
-        mv_y_q_enc, mv_y_q_dec, y_q_enc, y_q_dec = self.get_q_for_inference(q_in_ckpt, q_index)
+    def forward_one_frame(self, x, dpb, q_index, dummy_input, frame_idx, q_in_ckpt=False):
+        mv_y_q_enc, mv_y_q_dec, y_q_enc, y_q_dec = self.get_q_for_inference(q_in_ckpt, q_index, dummy_input)
 
         est_mv = self.optic_flow(x, dpb["ref_frame"])
         mv_y = self.mv_encoder(est_mv, dpb["ref_mv_feature"], mv_y_q_enc)

@@ -5,9 +5,8 @@ from ..utils.stream_helper import get_state_dict
 import torch.nn as nn
 
 ## IntraNoAr wrapper
-
 class IntraNoAR_wrapper(nn.Module):
-    def __init__(self, model_path, mode="forward", N=256, anchor_num=4, ec_thread=False, stream_part=1, inplace=False, q_in_ckpt=False, q_index=0):
+    def __init__(self, model_path, mode="forward", N=256, anchor_num=4, ec_thread=False, stream_part=1, inplace=False, q_in_ckpt=False):
         super().__init__()
         self.model = IntraNoAR(N, anchor_num, ec_thread, stream_part, inplace)
         state_dict = get_state_dict(model_path)
@@ -17,12 +16,10 @@ class IntraNoAR_wrapper(nn.Module):
         self.mode = mode
         self.torch_output_order = None
         self.q_in_ckpt = q_in_ckpt
-        self.q_index = q_index
 
-    def forward(self, x):
-        out_dict = self.model(x, q_in_ckpt=self.q_in_ckpt, q_index=self.q_index)
+    def forward(self, x, q_index, dummy_input):
+        out_dict = self.model(x, q_in_ckpt=self.q_in_ckpt, q_index=q_index, dummy_input=dummy_input)
         return out_dict["x_hat"], out_dict["bit"], out_dict["bpp"], out_dict["bpp_y"], out_dict["bpp_z"]
-
 
 # TODO: IntraNoAR encoder
 # Please update forward pass here to mimic how encoder from image_model.py
@@ -80,24 +77,22 @@ class IntraNoAR_decoder_wrapper(IntraNoAR_wrapper):
 ### DMC Wrapper
 
 class DMC_wrapper(nn.Module):
-    def __init__(self, model_path, anchor_num=4, ec_thread=False, stream_part=1, inplace=False, q_in_ckpt=False, q_index=0, frame_idx=0):
+    def __init__(self, model_path, anchor_num=4, ec_thread=False, stream_part=1, inplace=False, q_in_ckpt=False):
         super().__init__()
         self.dmc = DMC(anchor_num=anchor_num, ec_thread=ec_thread, stream_part=stream_part, inplace=inplace)
         state_dict = get_state_dict(model_path)
         self.dmc.load_state_dict(state_dict)
         self.dmc.eval()
         self.q_in_ckpt = q_in_ckpt
-        self.q_index = q_index
-        self.frame_idx = frame_idx
 
-    def forward(self, x, ref_frame):
+    def forward(self, x, ref_frame, q_index, dummy_input, frame_idx):
         dpb = { "ref_frame": ref_frame,
                 "ref_feature": None,
                 "ref_mv_feature": None,
                 "ref_y": None,
                 "ref_mv_y": None}
-        encoded = self.dmc.forward_one_frame(x, dpb, q_in_ckpt=self.q_in_ckpt, q_index=self.q_index,
-                                         frame_idx=self.frame_idx)
+        encoded = self.dmc.forward_one_frame(x, dpb, q_index, dummy_input,
+                                        q_in_ckpt=self.q_in_ckpt, frame_idx=frame_idx)
         # output of forward_one_frame
         # "bpp_mv_y": bpp_mv_y,
         #         "bpp_mv_z": bpp_mv_z,
