@@ -123,6 +123,9 @@ def run_test(p_frame_net, i_frame_net, args):
             pic_height = x.shape[2]
             pic_width = x.shape[3]
 
+            # Dummy input added to avoid constant-folding of q_index
+            dummy_input = torch.Tensor([0]).reshape(1,)
+
             if frame_pixel_num == 0:
                 frame_pixel_num = x.shape[2] * x.shape[3]
             else:
@@ -144,7 +147,7 @@ def run_test(p_frame_net, i_frame_net, args):
                 #                                    args['i_frame_q_index'], bin_path,
                 #                                    pic_height=pic_height, pic_width=pic_width)
                 frame_types.append(0)
-                
+
                 dpb = {
                     # "ref_frame": result["x_hat"],
                     "ref_feature": None,
@@ -157,24 +160,24 @@ def run_test(p_frame_net, i_frame_net, args):
                 # bits.append(result["bit"])
                 if args['encode_only']:
                     result_mlcompressor = i_frame_net.compress_without_entropy_coder(
-                                                        x_padded, 
-                                                        args['q_in_ckpt'], args['i_frame_q_index'])
+                                                        x_padded,
+                                                        args['q_in_ckpt'], args['i_frame_q_index'], dummy_input)
                     result_entropyencoder = i_frame_net.compress_entropy_coder(
                                                         result_mlcompressor,
-                                                        pic_height, pic_width, 
-                                                        args['q_in_ckpt'], args['i_frame_q_index'], 
+                                                        pic_height, pic_width,
+                                                        args['q_in_ckpt'], args['i_frame_q_index'],
                                                         bin_path)
                     result_mldecompressor = i_frame_net.decompress_without_entropy_coder(
-                                                        result_mlcompressor['y_hat'], 
-                                                        args['q_in_ckpt'], args['i_frame_q_index'])
+                                                        result_mlcompressor['y_hat'],
+                                                        args['q_in_ckpt'], args['i_frame_q_index'], dummy_input)
                     dpb["ref_frame"] = result_mldecompressor["x_hat"]
                     recon_frame = result_mldecompressor["x_hat"]
                     bits.append(result_entropyencoder["bit"])
                 elif args['decode_only']:
                     result_entropydecoder = i_frame_net.decompress_entropy_coder(bin_path)
                     result_mldecompressor = i_frame_net.decompress_without_entropy_coder(
-                                                        result_entropydecoder['y_hat'], 
-                                                        args['q_in_ckpt'], args['i_frame_q_index'])
+                                                        result_entropydecoder['y_hat'],
+                                                        args['q_in_ckpt'], args['i_frame_q_index'], dummy_input)
                     dpb["ref_frame"] = result_mldecompressor["x_hat"]
                     recon_frame = result_mldecompressor["x_hat"]
                     bits.append(result_entropydecoder["bit"])
@@ -188,18 +191,18 @@ def run_test(p_frame_net, i_frame_net, args):
             else:
                 if args['encode_only']:
                     result_mlcompressor = p_frame_net.compress_without_entropy_coder(
-                                                    x_padded, dpb, 
-                                                    args['q_in_ckpt'], args['p_frame_q_index'], 
-                                                    frame_idx % 4)
+                                                    x_padded, dpb,
+                                                    args['q_in_ckpt'], args['p_frame_q_index'],
+                                                    frame_idx % 4, dummy_input)
                     result_entropyencoder = p_frame_net.compress_entropy_coder(
-                                                    result_mlcompressor, 
-                                                    pic_height, pic_width, 
+                                                    result_mlcompressor,
+                                                    pic_height, pic_width,
                                                     args['q_in_ckpt'], args['p_frame_q_index'],
                                                     frame_idx % 4,
                                                     bin_path)
                     result_mldecompressor = p_frame_net.decompress_without_entropy_coder(
-                                                    result_mlcompressor, 
-                                                    args['q_in_ckpt'], args['p_frame_q_index'])
+                                                    result_mlcompressor,
+                                                    args['q_in_ckpt'], args['p_frame_q_index'], dummy_input)
                     dpb = result_mldecompressor["dpb"]
                     recon_frame = dpb["ref_frame"]
                     bits.append(result_entropyencoder['bit'])
@@ -207,8 +210,8 @@ def run_test(p_frame_net, i_frame_net, args):
                     result_entropydecoder = p_frame_net.decompress_entropy_coder(
                                                     dpb, bin_path)
                     result_mldecompressor = p_frame_net.decompress_without_entropy_coder(
-                                                    result_entropydecoder, 
-                                                    args['q_in_ckpt'], args['p_frame_q_index'])
+                                                    result_entropydecoder,
+                                                    args['q_in_ckpt'], args['p_frame_q_index'], dummy_input)
                     dpb = result_mldecompressor["dpb"]
                     recon_frame = dpb["ref_frame"]
                     bits.append(result_entropydecoder['bit'])

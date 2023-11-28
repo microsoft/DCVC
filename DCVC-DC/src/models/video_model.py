@@ -632,10 +632,10 @@ class DMC(CompressionModel):
                 "bit_mv_z": bit_mv_z,
                 }
 
-    def compress_without_entropy_coder(self, x, dpb, q_in_ckpt, q_index, frame_idx):
+    def compress_without_entropy_coder(self, x, dpb, q_in_ckpt, q_index, frame_idx, dummy_input):
         # pic_width and pic_height may be different from x's size. x here is after padding
         # x_hat has the same size with x
-        mv_y_q_enc, mv_y_q_dec, y_q_enc, _ = self.get_q_for_inference(q_in_ckpt, q_index)
+        mv_y_q_enc, mv_y_q_dec, y_q_enc, _ = self.get_q_for_inference(q_in_ckpt, q_index, dummy_input)
         mv_y = self.motion_estimation_and_mv_encoding(x, dpb, mv_y_q_enc)
         mv_y_pad, slice_shape = self.pad_for_y(mv_y)
         mv_z = self.mv_hyper_prior_encoder(mv_y_pad)
@@ -762,8 +762,8 @@ class DMC(CompressionModel):
             "bit": bits,
         }
 
-    def decompress_without_entropy_coder(self, result, q_in_ckpt, q_index):
-        _, _, _, y_q_dec = self.get_q_for_inference(q_in_ckpt, q_index)
+    def decompress_without_entropy_coder(self, result, q_in_ckpt, q_index, dummy_input):
+        _, _, _, y_q_dec = self.get_q_for_inference(q_in_ckpt, q_index, dummy_input)
         x_hat, feature = self.get_recon_and_feature(
                                 result["dpb"]['ref_y'],
                                 result['context1'],

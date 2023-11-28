@@ -257,8 +257,8 @@ class IntraNoAR(CompressionModel):
         x_hat = self.refine(self.dec(y_hat, curr_q_dec)).clamp_(0, 1)
         return {"x_hat": x_hat}
 
-    def compress_without_entropy_coder(self, x, q_in_ckpt, q_index):
-        curr_q_enc, _ = self.get_q_for_inference(q_in_ckpt, q_index)
+    def compress_without_entropy_coder(self, x, q_in_ckpt, q_index, dummy_input):
+        curr_q_enc, _ = self.get_q_for_inference(q_in_ckpt, q_index, dummy_input)
 
         y = self.enc(x, curr_q_enc)
         y_pad, slice_shape = self.pad_for_y(y)
@@ -310,8 +310,8 @@ class IntraNoAR(CompressionModel):
         }
         return result
 
-    def decompress_without_entropy_coder(self, y_hat, q_in_ckpt, q_index):
-        _, curr_q_dec = self.get_q_for_inference(q_in_ckpt, q_index)
+    def decompress_without_entropy_coder(self, y_hat, q_in_ckpt, q_index, dummy_input):
+        _, curr_q_dec = self.get_q_for_inference(q_in_ckpt, q_index, dummy_input)
         x_hat = self.refine(self.dec(y_hat, curr_q_dec)).clamp_(0, 1)
         return {"x_hat": x_hat}
 
