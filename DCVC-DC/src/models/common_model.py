@@ -32,7 +32,8 @@ class CompressionModel(nn.Module):
     def quant(self, x):
         return torch.round(x)
 
-    def get_curr_q(self, q_scale, q_basic, q_index=None):
+    def get_curr_q(self, q_scale, q_basic, q_index):
+        # check if q_index is a tensor
         q_scale = q_scale[q_index]
         return q_basic * q_scale
 
