@@ -8,8 +8,8 @@ Official Pytorch implementation for Neural Video and Image Compression including
     -  The first end-to-end neural video codec to exceed H.266 (VTM) using the highest compression ratio configuration, in terms of both PSNR and MS-SSIM.
     -  The first end-to-end neural video codec to achieve rate adjustment in single model.
   * DCVC-DC: [Neural Video Compression with **D**iverse **C**ontexts](https://arxiv.org/abs/2302.14402), CVPR 2023, in [this folder](./DCVC-DC/).
-    -  The first end-to-end neural video codec to exceed [ECM](https://jvet-experts.org/doc_end_user/documents/27_Teleconference/wg11/JVET-AA0006-v1.zip) using the highest compression ratio configuration, in terms of PSNR and MS-SSIM for RGB content.
-    -  The first end-to-end neural video codec to exceed ECM using the highest compression ratio configuration, in terms of PSNR for YUV420 content.
+    -  The first end-to-end neural video codec to exceed [ECM](https://jvet-experts.org/doc_end_user/documents/27_Teleconference/wg11/JVET-AA0006-v1.zip) using the highest compression ratio low delay configuration with a intra refresh period roughly to one second (32 frames), in terms of PSNR and MS-SSIM for RGB content.
+    -  The first end-to-end neural video codec to exceed ECM using the highest compression ratio low delay configuration with a intra refresh period roughly to one second (32 frames), in terms of PSNR for YUV420 content.
 * Neural Image Codec
   * [EVC: Towards Real-Time Neural Image Compression with Mask Decay](https://openreview.net/forum?id=XUxad2Gj40n), ICLR 2023, in [this folder](./EVC/).
 
