@@ -16,6 +16,10 @@ Official Pytorch implementation for Neural Video and Image Compression including
 * Neural Image Codec
   * [EVC: Towards Real-Time Neural Image Compression with Mask Decay](https://openreview.net/forum?id=XUxad2Gj40n), ICLR 2023, in [this folder](./EVC/).
 
+# Pretrained models
+
+As a backup, all the pretrained models could be found [here](https://1drv.ms/f/c/2866592d5c55df8c/EozfVVwtWWYggCitBAAAAAABbT4z2Z10fMXISnan72UtSA?e=BID7DA).
+
 # On the comparison
 
 Please note that different methods may use different configurations to test different models, such as
