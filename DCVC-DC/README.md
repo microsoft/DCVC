@@ -14,6 +14,13 @@ Official Pytorch implementation for DCVC-DC: [Neural Video Compression with **D*
     pip install -r requirements.txt
     ```
 
+* Environment if using XPU (Intel GPU)
+   ```
+   python -m pip install torch==2.1.0a0 torchvision==0.16.0a0 torchaudio==2.1.0a0 intel-extension-for-pytorch==2.1.10+xpu \
+     --extra-index-url https://pytorch-extension.intel.com/release-whl/stable/xpu/us/
+   pip install -r requirements.txt
+   ```
+
 # Test dataset
 
 We support arbitrary original resolution. The input video resolution will be padded to 64x automatically. The reconstructed video will be cropped back to the original size. The distortion (PSNR/MS-SSIM) is calculated at original resolution.
