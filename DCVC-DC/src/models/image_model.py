@@ -111,7 +111,7 @@ class IntraNoAR(CompressionModel):
         curr_q_dec = self.get_curr_q(q_scale_dec, self.q_basic_dec, q_index=q_index)
         return curr_q_enc, curr_q_dec
 
-    def forward(self, x, q_in_ckpt=False, q_index=None):
+    def forward(self, x, q_in_ckpt=False, q_index=0):
         curr_q_enc, curr_q_dec = self.get_q_for_inference(q_in_ckpt, q_index)
 
         y = self.enc(x, curr_q_enc)
