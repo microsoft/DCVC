@@ -1,0 +1,7 @@
+numpy>=1.20.0
+scipy
+matplotlib
+tqdm
+bd-metric
+pillow
+pybind11
