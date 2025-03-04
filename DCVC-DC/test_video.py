@@ -43,6 +43,7 @@ def parse_args():
     parser.add_argument("--cuda", type=str2bool, nargs='?', const=True, default=False)
     parser.add_argument("--cuda_device", default=None,
                         help="the cuda device used, e.g., 0; 0,1; 1,2,3; etc.")
+    parser.add_argument("--xpu", type=str2bool, nargs='?', const=True, default=False)
     parser.add_argument('--calc_ssim', type=str2bool, default=False, required=False)
     parser.add_argument('--write_stream', type=str2bool, nargs='?',
                         const=True, default=False)
@@ -281,7 +282,12 @@ def init_func(args):
     np.random.seed(seed=0)
     gpu_num = 0
     if args.cuda:
+        dev = "cuda"
         gpu_num = torch.cuda.device_count()
+    elif args.xpu:
+        dev = "xpu"
+        import intel_extension_for_pytorch
+        gpu_num = torch.xpu.device_count()
 
     process_name = multiprocessing.current_process().name
     process_idx = int(process_name[process_name.rfind('-') + 1:])
@@ -289,7 +295,7 @@ def init_func(args):
     if gpu_num > 0:
         gpu_id = process_idx % gpu_num
     if gpu_id >= 0:
-        device = f"cuda:{gpu_id}"
+        device = f"{dev}:{gpu_id}"
     else:
         device = "cpu"
 
