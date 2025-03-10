@@ -1,22 +1,25 @@
 # Introduction
 
-Official Pytorch implementation for DCVC-FM: [Neural Video Compression with **F**eature **M**odulation](https://arxiv.org/abs/2402.17414), in CVPR 2024.
+Official Pytorch implementation for DCVC-DC: [Neural Video Compression with **D**iverse **C**ontexts](https://arxiv.org/abs/2302.14402), in CVPR 2023.
+-  The first end-to-end neural video codec to exceed [ECM](https://jvet-experts.org/doc_end_user/documents/27_Teleconference/wg11/JVET-AA0006-v1.zip) using the highest compression ratio low delay configuration with a intra refresh period roughly to one second (32 frames), in terms of PSNR and MS-SSIM for RGB content.
+-  The first end-to-end neural video codec to exceed ECM using the highest compression ratio low delay configuration with a intra refresh period roughly to one second (32 frames), in terms of PSNR for YUV420 content.
+  
 
 # Prerequisites
-* Python 3.10 and conda, get [Conda](https://www.anaconda.com/)
+* Python 3.8 and conda, get [Conda](https://www.anaconda.com/)
 * CUDA if want to use GPU
 * Environment
     ```
-    conda create -n $YOUR_PY_ENV_NAME python=3.10
-    conda activate $YOUR_PY_ENV_NAME
+    conda create -n $YOUR_PY38_ENV_NAME python=3.8
+    conda activate $YOUR_PY38_ENV_NAME
 
-    conda install pytorch==2.0.0 torchvision==0.15.0 torchaudio==2.0.0 pytorch-cuda=11.8 -c pytorch -c nvidia
+    conda install pytorch==1.11.0 torchvision==0.12.0 torchaudio==0.11.0 cudatoolkit=11.3 -c pytorch
     pip install -r requirements.txt
     ```
 
 # Test dataset
 
-We support arbitrary original resolution. The input video resolution will be padded automatically. The reconstructed video will be cropped back to the original size. The distortion (PSNR) is calculated at original resolution.
+We support arbitrary original resolution. The input video resolution will be padded to 64x automatically. The reconstructed video will be cropped back to the original size. The distortion (PSNR/MS-SSIM) is calculated at original resolution.
 
 ## YUV 420 content
 
@@ -66,47 +69,56 @@ At last, the folder structure of dataset is like:
 The dataset structure can be seen in dataset_config_example_rgb.json.
 
 # Build the project
-Please build the C++ code if want to test with actual bitstream writing. There is minor difference about the bits for calculating the bits using entropy (the method used in the paper to report numbers) and actual bitstreaming writing. There is overhead when writing the bitstream into the file and the difference percentage depends on the bitstream size.
+Please build the C++ code if want to test with actual bitstream writing. There is minor difference about the bits for calculating the bits using entropy (the method used in the paper to report numbers) and actual bitstreaming writing. There is overhead when writing the bitstream into the file and the difference percentage depends on the bitstream size. Usually, the overhead for 1080p content is less than 0.5%.
+## On Windows
+```bash
+cd src
+mkdir build
+cd build
+conda activate $YOUR_PY38_ENV_NAME
+cmake ../cpp -G "Visual Studio 16 2019" -A x64
+cmake --build . --config Release
+```
 
-## Build the entropy encoding/decoding module
+## On Linux
 ```bash
 sudo apt-get install cmake g++
 cd src
 mkdir build
 cd build
-conda activate $YOUR_PY_ENV_NAME
+conda activate $YOUR_PY38_ENV_NAME
 cmake ../cpp -DCMAKE_BUILD_TYPE=Release
 make -j
 ```
 
-## Build customized flow warp implementation (especially you want to test fp16 inference)
-```
-sudo apt install ninja-build
-cd ./src/models/extensions/
-python setup.py build_ext --inplace
-```
-
 # Pretrained models
 
-* Download [our pretrained models](https://1drv.ms/f/s!AozfVVwtWWYoi1QkAhlIE-7aAaKV?e=OoemTr) and put them into ./checkpoints folder.
+* Download [Our pretrained models](https://1drv.ms/u/s!AozfVVwtWWYoiWdwDhEkZMIfpon5?e=JcGri5) and put them into ./checkpoints folder.
 * Or run the script in ./checkpoints directly to download the model.
-* There are 2 models, one for image coding and the other for video coding.
+* There are 6 models:
+  * \*image\* are image models and \*video\* are video models.
+  * \*psnr\* are models optimized for PSNR, \*ssim\* are models optimized for MS-SSIM, \*yuv420_psnr\* are models optimized for PSNR of YUV420 content.
 
 # Test the models
 
 Example to test pretrained model with four rate points:
 ```bash
-python test_video.py --model_path_i ./checkpoints/cvpr2024_image.pth.tar --model_path_p ./checkpoints/cvpr2024_video.pth.tar --rate_num 4 --test_config ./dataset_config_example_yuv420.json --cuda 1 --worker 1 --write_stream 0 --output_path output.json --force_intra_period 9999 --force_frame_num 96
+python test_video.py --i_frame_model_path ./checkpoints/cvpr2023_image_psnr.pth.tar --p_frame_model_path ./checkpoints/cvpr2023_video_psnr.pth.tar --rate_num 4 --test_config ./dataset_config_example_rgb.json --yuv420 0 --cuda 1 --worker 1 --write_stream 0 --output_path output.json --force_intra_period 32 --force_frame_num 96
 ```
+When testing YUV 420 content, please change the model path, test configuration json file and specify ```--yuv420 1``` in the command line.
 
 It is recommended that the ```--worker``` number is equal to your GPU number.
 
 You can also specify different ```--rate_num``` values (2~64) to test finer bitrate adjustment.
 
 # Comparing with other method
-Bit saving over VTM-17.0 (HEVC E (600 frames) with single intra-frame setting (i.e. intra-period = –1) and YUV420 colorspace.)
+Bit saving over VTM-17.0
 
 <img src="assets/bitsaving.png" width="600">
+
+RD curve of RGB PNSR
+
+<img src="assets/rd_rgb_psnr.png" width="1000">
 
 RD curve of YUV420 PSNR
 
@@ -118,12 +130,12 @@ The implementation is based on [CompressAI](https://github.com/InterDigitalInc/C
 If you find this work useful for your research, please cite:
 
 ```
-@inproceedings{li2024neural,
-  title={Neural Video Compression with Feature Modulation},
+@inproceedings{li2023neural,
+  title={Neural Video Compression with Diverse Contexts},
   author={Li, Jiahao and Li, Bin and Lu, Yan},
   booktitle={{IEEE/CVF} Conference on Computer Vision and Pattern Recognition,
-             {CVPR} 2024, Seattle, WA, USA, June 17-21, 2024},
-  year={2024}
+             {CVPR} 2023, Vancouver, Canada, June 18-22, 2023},
+  year={2023}
 }
 ```
 
