@@ -1,6 +1,8 @@
 # Introduction
 
-Official Pytorch implementation for DCVC-DC: [Neural Video Compression with **D**iverse **C**ontexts](https://arxiv.org/abs/2302.14402), in CVPR 2023.
+Official Pytorch implementation for DCVC-HEM: [**H**ybrid Spatial-Temporal **E**ntropy **M**odelling for Neural Video Compression](https://arxiv.org/abs/2207.05894), in ACM MM 2022.
+-  The first end-to-end neural video codec to exceed H.266 (VTM) using the highest compression ratio configuration, in terms of both PSNR and MS-SSIM.
+-  The first end-to-end neural video codec to achieve rate adjustment in single model.
 
 # Prerequisites
 * Python 3.8 and conda, get [Conda](https://www.anaconda.com/)
@@ -15,26 +17,9 @@ Official Pytorch implementation for DCVC-DC: [Neural Video Compression with **D*
     ```
 
 # Test dataset
-
 We support arbitrary original resolution. The input video resolution will be padded to 64x automatically. The reconstructed video will be cropped back to the original size. The distortion (PSNR/MS-SSIM) is calculated at original resolution.
 
-## YUV 420 content
-
-Put the*.yuv in the folder structure similar to the following structure.
-
-    /media/data/HEVC_B/
-        - BQTerrace_1920x1080_60.yuv
-        - BasketballDrive_1920x1080_50.yuv
-        - ...
-    /media/data/HEVC_D/
-    /media/data/HEVC_C/
-    ...
-
-The dataset structure can be seen in dataset_config_example_yuv420.json.
-
-## RGB content
-
-Please convert YUV 420 data to RGB data using BT.709 conversion matrix.
+The dataset format can be seen in dataset_config_example.json.
 
 For example, one video of HEVC Class B can be prepared as:
 * Make the video path:
@@ -42,9 +27,9 @@ For example, one video of HEVC Class B can be prepared as:
     mkdir BasketballDrive_1920x1080_50
     ```
 * Convert YUV to PNG:
-
-We use BT.709 conversion matrix to generate png data to test RGB sequences. Please refer to ./test_data_to_png.py for more details.
-
+    ```
+    ffmpeg -pix_fmt yuv420p -s 1920x1080 -i BasketballDrive_1920x1080_50.yuv -f image2 BasketballDrive_1920x1080_50/im%05d.png
+    ```
 At last, the folder structure of dataset is like:
 
     /media/data/HEVC_B/
@@ -59,11 +44,9 @@ At last, the folder structure of dataset is like:
             - im00003.png
             - ...
         * ...
-    /media/data/HEVC_D/
+    /media/data/HEVC_D
     /media/data/HEVC_C/
     ...
-
-The dataset structure can be seen in dataset_config_example_rgb.json.
 
 # Build the project
 Please build the C++ code if want to test with actual bitstream writing. There is minor difference about the bits for calculating the bits using entropy (the method used in the paper to report numbers) and actual bitstreaming writing. There is overhead when writing the bitstream into the file and the difference percentage depends on the bitstream size. Usually, the overhead for 1080p content is less than 0.5%.
@@ -90,36 +73,24 @@ make -j
 
 # Pretrained models
 
-* Download [Our pretrained models](https://1drv.ms/u/s!AozfVVwtWWYoiWdwDhEkZMIfpon5?e=JcGri5) and put them into ./checkpoints folder.
+* Download [Our pretrained models](https://1drv.ms/u/s!AozfVVwtWWYoiUAGk6xr-oELbodn?e=kry2Nk) and put them into ./checkpoints folder.
 * Or run the script in ./checkpoints directly to download the model.
-* There are 6 models:
-  * \*image\* are image models and \*video\* are video models.
-  * \*psnr\* are models optimized for PSNR, \*ssim\* are models optimized for MS-SSIM, \*yuv420_psnr\* are models optimized for PSNR of YUV420 content.
-
 # Test the models
 
 Example to test pretrained model with four rate points:
 ```bash
-python test_video.py --i_frame_model_path ./checkpoints/cvpr2023_image_psnr.pth.tar --p_frame_model_path ./checkpoints/cvpr2023_video_psnr.pth.tar --rate_num 4 --test_config ./dataset_config_example_rgb.json --yuv420 0 --cuda 1 --worker 1 --write_stream 0 --output_path output.json --force_intra_period 32 --force_frame_num 96
+python test_video.py --i_frame_model_path ./checkpoints/acmmm2022_image_psnr.pth.tar --model_path ./checkpoints/acmmm2022_video_psnr.pth.tar --rate_num 4 --test_config ./dataset_config_example.json --cuda 1 -w 1 --write_stream 0 --output_path output.json --force_intra_period 32 --force_frame_num 96
 ```
-When testing YUV 420 content, please change the model path, test configuration json file and specify ```--yuv420 1``` in the command line.
-
 It is recommended that the ```--worker``` number is equal to your GPU number.
 
-You can also specify different ```--rate_num``` values (2~64) to test finer bitrate adjustment.
+You can also specify different q_scales values to test other bitrate points. It is suggested to change all the three q_scales together and generate the interpolated q_scales between the minimum one and maximum one.
+For examples, using intra_q_scales = scale_list_to_str(interpolate_log(minimum_value, maximum_value, number_of_rate_points))
+Please use --rate_num to specify the rate number and --i_frame_q_scales, --p_frame_mv_y_q_scales, --p_frame_y_q_scales to specify the q_scales.
+Please note that, using q_scales out of the range [minimum_value, maximum_value] has not been tested and may generate poor encoding results.
 
-# Comparing with other method
-Bit saving over VTM-17.0
 
-<img src="assets/bitsaving.png" width="600">
-
-RD curve of RGB PNSR
-
-<img src="assets/rd_rgb_psnr.png" width="1000">
-
-RD curve of YUV420 PSNR
-
-<img src="assets/rd_yuv420_psnr.png" width="750">
+# R-D Curves
+![PSNR RD Curve](assets/rd_curve_psnr.png)
 
 # Acknowledgement
 The implementation is based on [CompressAI](https://github.com/InterDigitalInc/CompressAI) and [PyTorchVideoCompression](https://github.com/ZhihaoHu/PyTorchVideoCompression).
@@ -127,12 +98,11 @@ The implementation is based on [CompressAI](https://github.com/InterDigitalInc/C
 If you find this work useful for your research, please cite:
 
 ```
-@inproceedings{li2023neural,
-  title={Neural Video Compression with Diverse Contexts},
+@inproceedings{li2022hybrid,
+  title={Hybrid Spatial-Temporal Entropy Modelling for Neural Video Compression},
   author={Li, Jiahao and Li, Bin and Lu, Yan},
-  booktitle={{IEEE/CVF} Conference on Computer Vision and Pattern Recognition,
-             {CVPR} 2023, Vancouver, Canada, June 18-22, 2023},
-  year={2023}
+  booktitle={Proceedings of the 30th ACM International Conference on Multimedia},
+  year={2022}
 }
 ```
 

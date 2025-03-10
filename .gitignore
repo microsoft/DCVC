@@ -6,3 +6,4 @@
 build/
 *.tar
 *.pyd
+*.egg-info
