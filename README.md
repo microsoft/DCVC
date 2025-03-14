@@ -11,10 +11,14 @@
 <img src="assets/practical_performance.png" width="750">
 
 
-**<font size="4"> 
-The first neural video codec achieving 100+ FPS 1080p coding and 4K real-time coding with a comparable compression ratio with ECM.
-<font>**
+**DCVC-RT is the first neural video codec (NVC)  achieving 100+ FPS 1080p coding and 4K real-time coding with a comparable compression ratio with ECM.**
 
+**Beyond high compression ratio and fast coding speed, the primary goal of DCVC-RT is to pursue a more practical neural video codecsolution.** To achieve this, DCVC-RT prioritizes practical design choices, even if they come at the cost of compression efficiency. Currently, DCVC-RT supports several practical features, including:
+- **Wide bitrate range in single model**: A single model enables continuous and controllable bitrate adjustments. DCVC-RT can compress at a wide bitrate range for different coding scenarios. It supports bitrates from approximately 50 kpbs (33.2dB) to 3000 kpbs (42.9dB) for 1080p dataset.
+- **Rate control**: By adjusting quantization parameters, DCVC-RT effectively supports dynamic and various network conditions during real communication scenario.
+- **Unified YUV and RGB coding**: While DCVC-RT is primarily optimized for the widely adopted YUV format, it can seamlessly adapt to RGB content coding.
+
+We are continuously exploring additional practical functionalities and will provide further NVC solutions in this repository.
 
 ## :book: Overview
 
