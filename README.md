@@ -11,10 +11,8 @@
 <img src="assets/practical_performance.png" width="750">
 
 
-**DCVC-RT is the first neural video codec (NVC)  achieving 100+ FPS 1080p coding and 4K real-time coding with a comparable compression ratio with ECM.**
-
-**Beyond high compression ratio and fast coding speed, the primary goal of DCVC-RT is to pursue a more practical neural video codecsolution.** To achieve this, DCVC-RT prioritizes practical design choices, even if they come at the cost of compression efficiency. Currently, DCVC-RT supports several practical features, including:
-- **Wide bitrate range in single model**: A single model enables continuous and controllable bitrate adjustments. DCVC-RT can compress at a wide bitrate range for different coding scenarios. It supports bitrates from approximately 50 kpbs (33.2dB) to 3000 kpbs (42.9dB) for 1080p dataset.
+**DCVC-RT is the first neural video codec (NVC)  achieving 100+ FPS 1080p coding and 4K real-time coding with a comparable compression ratio with ECM. Beyond this, DCVC-RT pursue a more practical neural video codec solution and  supports various practical features, including:**
+- **Wide bitrate range in single model**: A single model enables continuous and controllable bitrate adjustments. DCVC-RT can compress at a wide bitrate range for different coding scenarios.
 - **Rate control**: By adjusting quantization parameters, DCVC-RT effectively supports dynamic and various network conditions during real communication scenario.
 - **Unified YUV and RGB coding**: While DCVC-RT is primarily optimized for the widely adopted YUV format, it can seamlessly adapt to RGB content coding.
 
@@ -22,15 +20,14 @@ We are continuously exploring additional practical functionalities and will prov
 
 ## :book: Overview
 
-Welcome to the official implementation of DCVC-RT and the broader [DCVC-family](#clipboard-dcvc-family) models. The DCVC family is designed to push the boundaries of high-performance practical neural video codecs, delivering cutting-edge compression efficiency, real-time capabilities, and versatile functionalities.
+Welcome to the official implementation of DCVC-RT and the broader [DCVC-family](DCVC-family/README.md) models. The DCVC (Deep Contextual Video Compression) family is designed to push the boundaries of high-performance practical neural video codecs, delivering cutting-edge compression efficiency, real-time capabilities, and versatile functionalities.
 
 :rocket: In this section, we provide a brief overview of DCVC-RT. For an in-depth understanding, we encourage you to read our [paper](https://arxiv.org/abs/2502.20762). 
 
-:hammer: Ready to get started? Head over to the [Usage](#hammer-usage) to start using this repo. 
+:hammer: Ready to get started? Head over to the [usage](#hammer-usage) to start using this repo. 
 
 :page_facing_up: If you find our work helpful, feel free to [cite](#page_facing_up-citation) us. We truly appreciate your support.
 
-:bouquet: The implementation of DCVC-RT is based on [CompressAI](https://github.com/InterDigitalInc/CompressAI).
 
 ### Abstract
 
@@ -190,13 +187,128 @@ Please find more details on the [test conditions](./test_conditions.md).
 
 ## :clipboard: DCVC-family
 
-The details of DCVC family models can be found in [DCVC-family](DCVC-family/README.md).
+DCVC-RT builds on the success of the DCVC family of models. The details of DCVC family models can be found in [DCVC-family](DCVC-family/README.md).
 
+<table>
+  <tr>
+    <th>Model</th>
+    <th>Paper</th>
+    <th>Code</th>
+    <th>Checkpoint</th>
+  </tr>
+  <tr>
+    <td>DCVC</td>
+    <td> 
+      <a href="https://proceedings.neurips.cc/paper/2021/file/96b250a90d3cf0868c83f8c965142d2a-Paper.pdf">Paper (NeurIPS 2021)</a> & 
+      <a href="https://arxiv.org/abs/2109.15047">Paper (arXiv)</a>
+    </td>
+    <td> <a href="DCVC-family/DCVC">Code</a></td>
+    <td><a href="https://1drv.ms/u/s!AozfVVwtWWYoiS5mcGX320bFXI0k?e=iMeykH">Checkpoints</a></td>
+  </tr>
+  <tr>
+    <td>DCVC-TCM</td>
+    <td>
+      <a href="https://ieeexplore.ieee.org/document/9941493">Paper (IEEE TMM)</a> & 
+      <a href="https://arxiv.org/abs/2111.13850">Paper (arXiv)</a>
+    </td>
+    <td><a href="DCVC-family/DCVC-TCM">Code</a></td>
+    <td><a href="https://onedrive.live.com/?authkey=%21ADwwaonwTGR%5FNR8&id=2866592D5C55DF8C%211234&cid=2866592D5C55DF8C">Checkpoints</a></td>
+  </tr>
+  <tr>
+    <td>DCVC-HEM</td>
+    <td>
+      <a href="https://dl.acm.org/doi/abs/10.1145/3503161.3547845">Paper (ACM MM 2022)</a> & 
+      <a href="https://arxiv.org/abs/2207.05894">Paper (arXiv)</a>
+    </td>
+    <td><a href="DCVC-family/DCVC-HEM">Code</a></td>
+    <td><a href="https://1drv.ms/u/s!AozfVVwtWWYoiUAGk6xr-oELbodn?e=kry2Nk">Checkpoints</a></td>
+  </tr>
+  <tr>
+    <td>DCVC-DC</td>
+    <td>
+      <a href="https://openaccess.thecvf.com/content/CVPR2023/papers/Li_Neural_Video_Compression_With_Diverse_Contexts_CVPR_2023_paper.pdf">Paper (CVPR 2023)</a> & 
+      <a href="https://arxiv.org/abs/2302.14402">Paper (arXiv)</a>
+    </td>
+    <td><a href="DCVC-family/DCVC-DC">Code</a></td>
+    <td><a href="https://1drv.ms/u/s!AozfVVwtWWYoiWdwDhEkZMIfpon5?e=JcGri5">Checkpoints</a></td>
+  </tr>
+  <tr>
+    <td>DCVC-FM</td>
+    <td>
+      <a href="https://openaccess.thecvf.com/content/CVPR2024/papers/Li_Neural_Video_Compression_with_Feature_Modulation_CVPR_2024_paper.pdf">Paper (CVPR 2024)</a> & 
+      <a href="https://arxiv.org/abs/2402.17414">Paper (arXiv)</a>
+    </td>
+    <td><a href="DCVC-family/DCVC-FM">Code</a></td>
+    <td><a href="https://1drv.ms/f/s!AozfVVwtWWYoi1QkAhlIE-7aAaKV?e=OoemTr">Checkpoints</a></td>
+  </tr>
+  <tr>
+    <td>DCVC-RT</td>
+    <td>
+      <a href="https://arxiv.org/abs/2502.20762">Paper (arXiv)</a>
+    </td>
+    <td><a href="https://github.com/microsoft/DCVC/tree/main">Code</a></td>
+    <td><a href="https://1drv.ms/f/c/2866592d5c55df8c/Esu0KJ-I2kxCjEP565ARx_YB88i0UnR6XnODqFcvZs4LcA?e=by8CO8">Checkpoints</a></td>
+  </tr>
+  <tr>
+    <td>EVC</td>
+    <td>
+      <a href="https://openreview.net/forum?id=XUxad2Gj40n">Paper (ICLR 2023)</a> & 
+      <a href="https://arxiv.org/abs/2302.05071">Paper (arXiv)</a>
+    </td>
+    <td><a href="DCVC-family/EVC">Code</a></td>
+    <td><a href="https://1drv.ms/u/s!AozfVVwtWWYoiUhZLZDx7vJjHK1C?e=qETpA1">Checkpoints</a></td>
+  </tr>
+</table>
+
+* As a backup, all the pretrained models could be found [here](https://1drv.ms/f/c/2866592d5c55df8c/EozfVVwtWWYggCitBAAAAAABbT4z2Z10fMXISnan72UtSA?e=BID7DA).
 
 ## :page_facing_up: Citation
 If you find this work useful for your research, please cite:
 
+<details>
+
+  <summary><font size="3"> BibTeX (click to expand) </font></summary><br>
+
 ```
+@article{li2021deep,
+  title={Deep Contextual Video Compression},
+  author={Li, Jiahao and Li, Bin and Lu, Yan},
+  journal={Advances in Neural Information Processing Systems},
+  volume={34},
+  year={2021}
+}
+
+@article{sheng2022temporal,
+  title={Temporal context mining for learned video compression},
+  author={Sheng, Xihua and Li, Jiahao and Li, Bin and Li, Li and Liu, Dong and Lu, Yan},
+  journal={IEEE Transactions on Multimedia},
+  year={2022},
+  publisher={IEEE}
+}
+
+@inproceedings{li2022hybrid,
+  title={Hybrid Spatial-Temporal Entropy Modelling for Neural Video Compression},
+  author={Li, Jiahao and Li, Bin and Lu, Yan},
+  booktitle={Proceedings of the 30th ACM International Conference on Multimedia},
+  year={2022}
+}
+
+@inproceedings{li2023neural,
+  title={Neural Video Compression with Diverse Contexts},
+  author={Li, Jiahao and Li, Bin and Lu, Yan},
+  booktitle={{IEEE/CVF} Conference on Computer Vision and Pattern Recognition,
+             {CVPR} 2023, Vancouver, Canada, June 18-22, 2023},
+  year={2023}
+}
+
+@inproceedings{li2024neural,
+  title={Neural Video Compression with Feature Modulation},
+  author={Li, Jiahao and Li, Bin and Lu, Yan},
+  booktitle={{IEEE/CVF} Conference on Computer Vision and Pattern Recognition,
+             {CVPR} 2024, Seattle, WA, USA, June 17-21, 2024},
+  year={2024}
+}
+
 @inproceedings{jia2025towards,
   title={Towards Practical Real-Time Neural Video Compression},
   author={Jia, Zhaoyang and Li, Bin and Li, Jiahao and Xie, Wenxuan and Qi, Linfeng and Li, Houqiang and Lu, Yan},
@@ -204,7 +316,20 @@ If you find this work useful for your research, please cite:
              {CVPR} 2025, Nashville, TN, USA, June 11-25, 2024},
   year={2025}
 }
+
+@inproceedings{wang2023EVC,
+  title={EVC: Towards Real-Time Neural Image Compression with Mask Decay},
+  author={Wang, Guo-Hua and Li, Jiahao and Li, Bin and Lu, Yan},
+  booktitle={International Conference on Learning Representations},
+  year={2023}
+}
 ```
+</details>
+
+
+## Acknowledgement
+
+The implementation of DCVC-RT is based on [CompressAI](https://github.com/InterDigitalInc/CompressAI).
 
 ## Trademarks
 This project may contain trademarks or logos for projects, products, or services. Authorized use of Microsoft trademarks or logos is subject to and must follow [Microsoft’s Trademark & Brand Guidelines](https://www.microsoft.com/en-us/legal/intellectualproperty/trademarks/usage/general). Use of Microsoft trademarks or logos in modified versions of this project must not cause confusion or imply Microsoft sponsorship. Any use of third-party trademarks or logos are subject to those third-party’s policies.
