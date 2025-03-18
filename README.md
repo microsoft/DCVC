@@ -6,6 +6,7 @@
 
 </div>
 
+[![page](https://img.shields.io/badge/Project-Page-blue?logo=github&logoSvg)](https://dcvccodec.github.io//)
 [![arXiv](https://img.shields.io/badge/arXiv-2502.20762-b31b1b.svg)](https://arxiv.org/abs/2502.20762)
 
 <img src="assets/practical_performance.png" width="750">
