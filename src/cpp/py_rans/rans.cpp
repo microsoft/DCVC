@@ -257,8 +257,8 @@ RansEncoderLibMultiThread::RansEncoderLibMultiThread()
     : RansEncoderLib()
     , m_finish(false)
     , m_result_ready(false)
-    , m_thread(std::thread(&RansEncoderLibMultiThread::worker, this))
 {
+    m_thread = std::thread(&RansEncoderLibMultiThread::worker, this);
 }
 RansEncoderLibMultiThread::~RansEncoderLibMultiThread()
 {
@@ -437,8 +437,8 @@ RansDecoderLibMultiThread::RansDecoderLibMultiThread()
     : RansDecoderLib()
     , m_finish(false)
     , m_result_ready(false)
-    , m_thread(std::thread(&RansDecoderLibMultiThread::worker, this))
 {
+    m_thread = std::thread(&RansDecoderLibMultiThread::worker, this);
 }
 
 RansDecoderLibMultiThread::~RansDecoderLibMultiThread()
