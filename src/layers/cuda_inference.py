@@ -135,11 +135,11 @@ def build_index_dec(scales, scale_min, scale_max, log_scale_min, log_step_recip,
         return out, skip_cond
 
     skip_cond = None
-    if skip_thres is not None:
-        skip_cond = scales > skip_thres
     scales = scales.clamp_(scale_min, scale_max)
     indexes = (torch.log(scales) - log_scale_min) * log_step_recip
     indexes = indexes.to(dtype=torch.uint8)
+    if skip_thres is not None:
+        skip_cond = scales > skip_thres
     return indexes, skip_cond
 
 
