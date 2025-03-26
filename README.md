@@ -93,6 +93,8 @@ cd ../layers/extensions/inference/
 pip install .
 ```
 
+If the CUDA kernels fail to load successfully in infererence, the standard output will display: ```cannot import cuda implementation for inference, fallback to pytorch.```
+
 </details>
 
 <details>
@@ -161,12 +163,16 @@ We highly suggest testing YUV420 content. To test RGB content, please refer to t
 
 Example to test pretrained model with four rate points:
 ```bash
- python test_video.py --model_path_i ./checkpoints/cvpr2025_image.pth.tar --model_path_p ./checkpoints/cvpr2025_video.pth.tar --rate_num 4 --test_config ./dataset_config_example_yuv420.json --cuda 1 -w 1 --write_stream 1 --force_zero_thres 0.12 --output_path output.json --force_intra_period -1 --reset_interval 64 --force_frame_num -1 --check_existing 0
+ python test_video.py --model_path_i ./checkpoints/cvpr2025_image.pth.tar --model_path_p ./checkpoints/cvpr2025_video.pth.tar --rate_num 4 --test_config ./dataset_config_example_yuv420.json --cuda 1 -w 1 --write_stream 1 --force_zero_thres 0.12 --output_path output.json --force_intra_period -1 --reset_interval 64 --force_frame_num -1 --check_existing 0 --verbose 0
 ```
 
 It is recommended that the ```-w``` number is equal to your GPU number.
 
 You can also specify different ```--rate_num``` values (2~64) to test finer bitrate adjustment.
+
+To measure coding speed, you can set  ```--verbose``` value to `1` (sequence-level measuring) or `2` (frame-level measuring). This will automatically measure encoding and decoding speeds, print them in the terminal, and record the average speeds in ```avg_frame_encoding_time``` and ```avg_frame_decoding_time``` in the output JSON file. 
+- Note that ```test_time``` is the total testing time for the entire sequence, which includes I/O time, encoding time, decoding time, and distortion calculation time. The overhead from I/O and distortion calculation is much larger than the encoding/decoding time itself, so we exclude these overheads to measure the precise coding time.
+- Additionally, please make sure ```time.time()``` provides sufficient precision on the tested platform. For instance, our experience is that the precision is adequate on our Ubuntu device, but insufficient on our Windows device.
 
 </details>
 
