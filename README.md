@@ -251,6 +251,7 @@ DCVC-RT builds on the success of the DCVC family of models. The details of DCVC 
   <tr>
     <td>DCVC-RT</td>
     <td>
+      <a href="https://openaccess.thecvf.com/content/CVPR2025/papers/Jia_Towards_Practical_Real-Time_Neural_Video_Compression_CVPR_2025_paper.pdf">Paper (CVPR 2025)</a> & 
       <a href="https://arxiv.org/abs/2502.20762">Paper (arXiv)</a>
     </td>
     <td><a href="https://github.com/microsoft/DCVC/tree/main">Code</a></td>
