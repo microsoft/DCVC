@@ -301,17 +301,11 @@ void RansEncoderLibMultiThread::worker()
 {
     while (!m_finish) {
         std::unique_lock<std::mutex> lk(m_mutex_pending);
-        m_cv_pending.wait(lk, [this] { return m_pending.size() > 0 || m_finish; });
+        m_cv_pending.wait(lk, [this] { return !m_pending.empty() || m_finish; });
         if (m_finish) {
-            lk.unlock();
             break;
         }
-        if (m_pending.size() == 0) {
-            lk.unlock();
-            // std::cout << "contine in worker" << std::endl;
-            continue;
-        }
-        while (m_pending.size() > 0) {
+        while (!m_pending.empty()) {
             auto p = m_pending.front();
             m_pending.pop_front();
             lk.unlock();
@@ -325,7 +319,6 @@ void RansEncoderLibMultiThread::worker()
             }
             lk.lock();
         }
-        lk.unlock();
     }
 }
 
@@ -502,17 +495,11 @@ void RansDecoderLibMultiThread::worker()
 {
     while (!m_finish) {
         std::unique_lock<std::mutex> lk(m_mutex_pending);
-        m_cv_pending.wait(lk, [this] { return m_pending.size() > 0 || m_finish; });
+        m_cv_pending.wait(lk, [this] { return !m_pending.empty() || m_finish; });
         if (m_finish) {
-            lk.unlock();
             break;
         }
-        if (m_pending.size() == 0) {
-            lk.unlock();
-            // std::cout << "contine in worker" << std::endl;
-            continue;
-        }
-        while (m_pending.size() > 0) {
+        while (!m_pending.empty()) {
             auto p = m_pending.front();
             m_pending.pop_front();
             lk.unlock();
@@ -529,6 +516,5 @@ void RansDecoderLibMultiThread::worker()
             m_cv_result.notify_one();
             lk.lock();
         }
-        lk.unlock();
     }
 }
