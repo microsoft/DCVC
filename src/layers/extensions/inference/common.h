@@ -268,8 +268,12 @@ __forceinline__ __device__ T reciprocal(const T& a)
     return make_vec4(reciprocal(a.x), reciprocal(a.y), reciprocal(a.z), reciprocal(a.w));
 }
 
-template <typename T1, typename T2>
-__forceinline__ __device__ bool4 operator>(const T1& a, const T2& b)
+__forceinline__ __device__ bool4 operator>(const float4& a, const float b)
+{
+    return make_vec4(a.x > b, a.y > b, a.z > b, a.w > b);
+}
+
+__forceinline__ __device__ bool4 operator>(const Half4& a, const c10::Half& b)
 {
     return make_vec4(a.x > b, a.y > b, a.z > b, a.w > b);
 }
