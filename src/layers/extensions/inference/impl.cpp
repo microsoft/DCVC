@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT License.
 
+#include <torch/nn/functional.h>
 #include "def.h"
 namespace F = torch::nn::functional;
 
