@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT License.
 
-#include <torch/extension.h>
+#include <torch/types.h>
 
 std::tuple<torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor>
 process_with_mask_cuda(const torch::Tensor& y, const torch::Tensor& scales, const torch::Tensor& means,
