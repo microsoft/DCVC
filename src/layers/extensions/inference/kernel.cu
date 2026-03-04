@@ -6,7 +6,9 @@
 #include <cuda.h>
 #include <cuda_fp16.h>
 #include <cuda_runtime.h>
-#include <torch/extension.h>
+#include <ATen/ATen.h>
+#include <ATen/ops/empty_like.h>
+#include <torch/types.h>
 
 #include "common.h"
 #include "def.h"
@@ -121,10 +123,10 @@ std::tuple<torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor>
 process_with_mask_cuda(const torch::Tensor& y, const torch::Tensor& scales, const torch::Tensor& means,
                        const torch::Tensor& mask, const float force_zero_thres)
 {
-    auto y_res = torch::empty_like(y);
-    auto y_q = torch::empty_like(y);
-    auto y_hat = torch::empty_like(y);
-    auto s_hat = torch::empty_like(y);
+    auto y_res = at::empty_like(y);
+    auto y_q = at::empty_like(y);
+    auto y_hat = at::empty_like(y);
+    auto s_hat = at::empty_like(y);
 
     if (y.dtype() == torch::kFloat32) {
         process_with_mask_dispatcher<float, float4>(y_res, y_q, y_hat, s_hat, y, scales, means,
@@ -855,7 +857,7 @@ __forceinline__ void round_and_to_int8_dispatcher(torch::Tensor& z, torch::Tenso
 
 torch::Tensor round_and_to_int8_cuda(torch::Tensor& z)
 {
-    auto z_int8 = torch::empty_like(z, at::TensorOptions().dtype(torch::kInt8));
+    auto z_int8 = at::empty_like(z, at::TensorOptions().dtype(torch::kInt8));
     if (z.dtype() == torch::kFloat32) {
         round_and_to_int8_dispatcher<float, float4>(z, z_int8);
     } else if (z.dtype() == torch::kFloat16) {
@@ -900,7 +902,7 @@ __forceinline__ void clamp_reciprocal_with_quant_dispatcher(torch::Tensor& q_dec
 torch::Tensor clamp_reciprocal_with_quant_cuda(const torch::Tensor& q_dec, torch::Tensor& y,
                                                const float min_val)
 {
-    auto q_dec_clamp = torch::empty_like(q_dec);
+    auto q_dec_clamp = at::empty_like(q_dec);
     if (q_dec.dtype() == torch::kFloat32) {
         clamp_reciprocal_with_quant_dispatcher<float, float4>(q_dec_clamp, q_dec, y, min_val);
     } else if (q_dec.dtype() == torch::kFloat16) {
@@ -1123,7 +1125,7 @@ torch::Tensor bias_wsilu_depthwise_conv2d_cuda(const torch::Tensor& x, const tor
     const int H = x_shape[2];
     const int W = x_shape[3];
 
-    auto out = torch::empty_like(x);
+    auto out = at::empty_like(x);
 
     const int BLOCK_SIZE = 32;
     const int THREAD_NUM_X = 16;

@@ -6,7 +6,7 @@
 #include <cuda.h>
 #include <cuda_fp16.h>
 #include <cuda_runtime.h>
-#include <torch/extension.h>
+#include <torch/types.h>
 
 // T maybe vector type, and may be different from t.dtype
 template <typename T>
