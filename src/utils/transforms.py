@@ -1,3 +1,6 @@
+# Copyright (c) Microsoft Corporation.
+# Licensed under the MIT License.
+
 import numpy as np
 import scipy.ndimage
 import torch
@@ -6,8 +9,61 @@ import torch.nn.functional as F
 
 YCBCR_WEIGHTS = {
     # Spec: (K_r, K_g, K_b) with K_g = 1 - K_r - K_b
-    "ITU-R_BT.709": (0.2126, 0.7152, 0.0722)
+    'ITU-R_BT.709': (0.2126, 0.7152, 0.0722)
 }
+Kr, Kg, Kb = YCBCR_WEIGHTS['ITU-R_BT.709']
+
+
+def rgb2ycbcr(rgb, is_bgr=False):
+    if is_bgr:
+        b, g, r = rgb.chunk(3, -3)
+    else:
+        r, g, b = rgb.chunk(3, -3)
+    y = Kr * r + Kg * g + Kb * b
+    cb = 0.5 * (b - y) / (1 - Kb) + 0.5
+    cr = 0.5 * (r - y) / (1 - Kr) + 0.5
+    ycbcr = torch.cat((y, cb, cr), dim=-3)
+    ycbcr = torch.clamp(ycbcr, 0., 1.)
+    return ycbcr
+
+
+def rgb2ycbcr_np(rgb, quant=False):
+    '''
+    Note: channel_last memory format
+    input is hxwx3 RGB float numpy array
+    output is ycbcr: hxwx3
+    '''
+    h, w, c = rgb.shape
+    assert c == 3
+    assert h % 2 == 0
+    assert w % 2 == 0
+    r, g, b = np.split(rgb, 3, axis=2)
+    y = Kr * r + Kg * g + Kb * b
+    cb = 0.5 * (b - y) / (1 - Kb) + 0.5
+    cr = 0.5 * (r - y) / (1 - Kr) + 0.5
+    ycbcr = np.concatenate((y, cb, cr), axis=2)
+    ycbcr = np.clip(ycbcr, 0., 1.)
+
+    if quant:
+        ycbcr = np.round(ycbcr * 255.) / 255.
+
+    return ycbcr
+
+
+def ycbcr2rgb(ycbcr, is_bgr=False, clamp=True):
+    dtype = ycbcr.dtype
+    ycbcr = ycbcr.float()
+    y, cb, cr = ycbcr.chunk(3, -3)
+    r = y + (2 - 2 * Kr) * (cr - 0.5)
+    b = y + (2 - 2 * Kb) * (cb - 0.5)
+    g = (y - Kr * r - Kb * b) / Kg
+    if is_bgr:
+        rgb = torch.cat((b, g, r), dim=-3)
+    else:
+        rgb = torch.cat((r, g, b), dim=-3)
+    if clamp:
+        rgb = torch.clamp(rgb, 0., 1.)
+    return rgb.to(dtype)
 
 
 def ycbcr420_to_444_np(y, uv, order=0, separate=False):
@@ -22,35 +78,6 @@ def ycbcr420_to_444_np(y, uv, order=0, separate=False):
         return y, uv
     yuv = np.concatenate((y, uv), axis=0)
     return yuv
-
-
-def rgb2ycbcr(rgb, is_bgr=False):
-    if is_bgr:
-        b, g, r = rgb.chunk(3, -3)
-    else:
-        r, g, b = rgb.chunk(3, -3)
-    Kr, Kg, Kb = YCBCR_WEIGHTS["ITU-R_BT.709"]
-    y = Kr * r + Kg * g + Kb * b
-    cb = 0.5 * (b - y) / (1 - Kb) + 0.5
-    cr = 0.5 * (r - y) / (1 - Kr) + 0.5
-    ycbcr = torch.cat((y, cb, cr), dim=-3)
-    ycbcr = torch.clamp(ycbcr, 0., 1.)
-    return ycbcr
-
-
-def ycbcr2rgb(ycbcr, is_bgr=False, clamp=True):
-    y, cb, cr = ycbcr.chunk(3, -3)
-    Kr, Kg, Kb = YCBCR_WEIGHTS["ITU-R_BT.709"]
-    r = y + (2 - 2 * Kr) * (cr - 0.5)
-    b = y + (2 - 2 * Kb) * (cb - 0.5)
-    g = (y - Kr * r - Kb * b) / Kg
-    if is_bgr:
-        rgb = torch.cat((b, g, r), dim=-3)
-    else:
-        rgb = torch.cat((r, g, b), dim=-3)
-    if clamp:
-        rgb = torch.clamp(rgb, 0., 1.)
-    return rgb
 
 
 def yuv_444_to_420(yuv):

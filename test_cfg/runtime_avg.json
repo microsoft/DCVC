@@ -1,0 +1,17 @@
+{
+    "root_path": "/data/test_sequences/YUV/",
+    "test_classes": {
+        "HEVC_B": {
+            "test": 1,
+            "base_path": "HEVC_B",
+            "src_type": "yuv420",
+            "sequences": {
+                "BQTerrace_1920x1080_60.yuv":       {"width": 1920, "height": 1080, "frames": 97, "intra_period": -1},
+                "BasketballDrive_1920x1080_50.yuv": {"width": 1920, "height": 1080, "frames": 97, "intra_period": -1},
+                "Cactus_1920x1080_50.yuv":          {"width": 1920, "height": 1080, "frames": 97, "intra_period": -1},
+                "Kimono1_1920x1080_24.yuv":         {"width": 1920, "height": 1080, "frames": 97, "intra_period": -1},
+                "ParkScene_1920x1080_24.yuv":       {"width": 1920, "height": 1080, "frames": 97, "intra_period": -1}
+            }
+        }
+    }
+}

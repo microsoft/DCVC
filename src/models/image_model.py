@@ -1,57 +1,29 @@
 # Copyright (c) Microsoft Corporation.
 # Licensed under the MIT License.
 
+import numpy as np
 import torch
-from torch import nn
 import torch.nn.functional as F
 
+from torch import nn
 
 from .common_model import CompressionModel
-from ..layers.layers import DepthConvBlock, ResidualBlockUpsample, ResidualBlockWithStride2
-from ..layers.cuda_inference import CUSTOMIZED_CUDA_INFERENCE, round_and_to_int8
+from ..layers.layers import DepthConvBlock, QuantFunc, ResidualBlockUpsample, ResidualBlockWithStride2
+from ..utils.common import loss_func
+
 
 g_ch_src = 3 * 8 * 8
-g_ch_enc_dec = 368
-
-
-class IntraEncoder(nn.Module):
-    def __init__(self, N):
-        super().__init__()
-
-        self.enc_1 = DepthConvBlock(g_ch_src, g_ch_enc_dec)
-        self.enc_2 = nn.Sequential(
-            DepthConvBlock(g_ch_enc_dec, g_ch_enc_dec),
-            DepthConvBlock(g_ch_enc_dec, g_ch_enc_dec),
-            DepthConvBlock(g_ch_enc_dec, g_ch_enc_dec),
-            DepthConvBlock(g_ch_enc_dec, g_ch_enc_dec),
-            DepthConvBlock(g_ch_enc_dec, g_ch_enc_dec),
-            DepthConvBlock(g_ch_enc_dec, g_ch_enc_dec),
-            nn.Conv2d(g_ch_enc_dec, N, 3, stride=2, padding=1),
-        )
-
-    def forward(self, x, quant_step):
-        out = F.pixel_unshuffle(x, 8)
-        if not CUSTOMIZED_CUDA_INFERENCE or not x.is_cuda:
-            return self.forward_torch(out, quant_step)
-
-        return self.forward_cuda(out, quant_step)
-
-    def forward_torch(self, out, quant_step):
-        out = self.enc_1(out)
-        out = out * quant_step
-        return self.enc_2(out)
-
-    def forward_cuda(self, out, quant_step):
-        out = self.enc_1(out, quant_step=quant_step)
-        return self.enc_2(out)
+g_ch_enc_dec = 384
+g_ch_y = 256
+g_ch_z = 128
 
 
 class IntraDecoder(nn.Module):
-    def __init__(self, N):
+    def __init__(self):
         super().__init__()
 
         self.dec_1 = nn.Sequential(
-            ResidualBlockUpsample(N, g_ch_enc_dec),
+            ResidualBlockUpsample(g_ch_y, g_ch_enc_dec),
             DepthConvBlock(g_ch_enc_dec, g_ch_enc_dec),
             DepthConvBlock(g_ch_enc_dec, g_ch_enc_dec),
             DepthConvBlock(g_ch_enc_dec, g_ch_enc_dec),
@@ -68,142 +40,188 @@ class IntraDecoder(nn.Module):
         self.dec_2 = DepthConvBlock(g_ch_enc_dec, g_ch_src)
 
     def forward(self, x, quant_step):
-        if not CUSTOMIZED_CUDA_INFERENCE or not x.is_cuda:
-            return self.forward_torch(x, quant_step)
-
-        return self.forward_cuda(x, quant_step)
-
-    def forward_torch(self, x, quant_step):
         out = self.dec_1(x)
         out = out * quant_step
         out = self.dec_2(out)
         out = F.pixel_shuffle(out, 8)
         return out
 
-    def forward_cuda(self, x, quant_step):
-        out = self.dec_1[0](x)
-        out = self.dec_1[1](out)
-        out = self.dec_1[2](out)
-        out = self.dec_1[3](out)
-        out = self.dec_1[4](out)
-        out = self.dec_1[5](out)
-        out = self.dec_1[6](out)
-        out = self.dec_1[7](out)
-        out = self.dec_1[8](out)
-        out = self.dec_1[9](out)
-        out = self.dec_1[10](out)
-        out = self.dec_1[11](out)
-        out = self.dec_1[12](out, quant_step=quant_step)
-        out = self.dec_2(out)
-        out = F.pixel_shuffle(out, 8)
-        return out
+
+class IntraEncoder(nn.Module):
+    def __init__(self):
+        super().__init__()
+
+        self.enc_1 = DepthConvBlock(g_ch_src, g_ch_enc_dec)
+        self.enc_2 = nn.Sequential(
+            DepthConvBlock(g_ch_enc_dec, g_ch_enc_dec),
+            DepthConvBlock(g_ch_enc_dec, g_ch_enc_dec),
+            DepthConvBlock(g_ch_enc_dec, g_ch_enc_dec),
+            DepthConvBlock(g_ch_enc_dec, g_ch_enc_dec),
+            DepthConvBlock(g_ch_enc_dec, g_ch_enc_dec),
+            DepthConvBlock(g_ch_enc_dec, g_ch_enc_dec),
+            nn.Conv2d(g_ch_enc_dec, g_ch_y, 3, stride=2, padding=1),
+        )
+
+    def forward(self, x, quant_step):
+        out = F.pixel_unshuffle(x, 8)
+        out = self.enc_1(out)
+        out = out * quant_step
+        return self.enc_2(out)
+
+
+class IntraHyperDecoder(nn.Module):
+    def __init__(self):
+        super().__init__()
+        self.conv = nn.Sequential(
+            ResidualBlockUpsample(g_ch_z, g_ch_z),
+            ResidualBlockUpsample(g_ch_z, g_ch_z),
+            DepthConvBlock(g_ch_z, g_ch_y),
+        )
+
+    def forward(self, x):
+        return self.conv(x)
+
+
+class IntraHyperEncoder(nn.Module):
+    def __init__(self):
+        super().__init__()
+        self.conv = nn.Sequential(
+            DepthConvBlock(g_ch_y, g_ch_z),
+            ResidualBlockWithStride2(g_ch_z, g_ch_z),
+            ResidualBlockWithStride2(g_ch_z, g_ch_z),
+        )
+
+    def forward(self, x):
+        return self.conv(x)
+
+
+class IntraSpatialPrior(nn.Module):
+    def __init__(self):
+        super().__init__()
+        self.conv = nn.Sequential(
+            DepthConvBlock(g_ch_y * 2, g_ch_y * 2),
+            DepthConvBlock(g_ch_y * 2, g_ch_y * 2),
+            DepthConvBlock(g_ch_y * 2, g_ch_y * 2),
+            nn.Conv2d(g_ch_y * 2, g_ch_y * 2, 1),
+        )
+
+    def forward(self, x):
+        return self.conv(x)
+
+
+class IntraYPriorFusion(nn.Module):
+    def __init__(self):
+        super().__init__()
+        self.conv = nn.Sequential(
+            DepthConvBlock(g_ch_y, g_ch_y * 2),
+            DepthConvBlock(g_ch_y * 2, g_ch_y * 2),
+            DepthConvBlock(g_ch_y * 2, g_ch_y * 2),
+            nn.Conv2d(g_ch_y * 2, g_ch_y * 2, 1),
+        )
+
+    def forward(self, x):
+        return self.conv(x)
 
 
 class DMCI(CompressionModel):
-    def __init__(self, N=256, z_channel=128):
-        super().__init__(z_channel=z_channel)
+    def __init__(self):
+        super().__init__(z_channel=g_ch_z)
 
-        self.enc = IntraEncoder(N)
+        self.enc = IntraEncoder()
+        self.hyper_enc = IntraHyperEncoder()
 
-        self.hyper_enc = nn.Sequential(
-            DepthConvBlock(N, z_channel),
-            ResidualBlockWithStride2(z_channel, z_channel),
-            ResidualBlockWithStride2(z_channel, z_channel),
-        )
+        self.hyper_dec = IntraHyperDecoder()
+        self.y_prior_fusion = IntraYPriorFusion()
 
-        self.hyper_dec = nn.Sequential(
-            ResidualBlockUpsample(z_channel, z_channel),
-            ResidualBlockUpsample(z_channel, z_channel),
-            DepthConvBlock(z_channel, N),
-        )
+        self.y_spatial_prior_reduction = nn.Conv2d(g_ch_y * 2, g_ch_y, 1)
+        self.y_spatial_prior_adaptor_1 = DepthConvBlock(g_ch_y * 2, g_ch_y * 2, force_adaptor=True)
+        self.y_spatial_prior_adaptor_2 = DepthConvBlock(g_ch_y * 2, g_ch_y * 2, force_adaptor=True)
+        self.y_spatial_prior_adaptor_3 = DepthConvBlock(g_ch_y * 2, g_ch_y * 2, force_adaptor=True)
+        self.y_spatial_prior = IntraSpatialPrior()
 
-        self.y_prior_fusion = nn.Sequential(
-            DepthConvBlock(N, N * 2),
-            DepthConvBlock(N * 2, N * 2),
-            DepthConvBlock(N * 2, N * 2),
-            nn.Conv2d(N * 2, N * 2 + 2, 1),
-        )
+        self.dec = IntraDecoder()
 
-        self.y_spatial_prior_reduction = nn.Conv2d(N * 2 + 2, N * 1, 1)
-        self.y_spatial_prior_adaptor_1 = DepthConvBlock(N * 2, N * 2, force_adaptor=True)
-        self.y_spatial_prior_adaptor_2 = DepthConvBlock(N * 2, N * 2, force_adaptor=True)
-        self.y_spatial_prior_adaptor_3 = DepthConvBlock(N * 2, N * 2, force_adaptor=True)
-        self.y_spatial_prior = nn.Sequential(
-            DepthConvBlock(N * 2, N * 2),
-            DepthConvBlock(N * 2, N * 2),
-            DepthConvBlock(N * 2, N * 2),
-            nn.Conv2d(N * 2, N * 2, 1),
-        )
+        self.q_scale_enc = nn.Parameter(torch.ones((self.qp_num(), g_ch_enc_dec)))
+        self.q_scale_dec = nn.Parameter(torch.ones((self.qp_num(), g_ch_enc_dec)))
+        self.q_scale_y_enc = nn.Parameter(torch.ones((self.qp_num(), g_ch_y)))
+        self.q_scale_y_dec = nn.Parameter(torch.ones((self.qp_num(), g_ch_y)))
+        self._initialize_weights()
 
-        self.dec = IntraDecoder(N)
-
-        self.q_scale_enc = nn.Parameter(torch.ones((self.get_qp_num(), g_ch_enc_dec, 1, 1)))
-        self.q_scale_dec = nn.Parameter(torch.ones((self.get_qp_num(), g_ch_enc_dec, 1, 1)))
-
-    def compress(self, x, qp):
-        device = x.device
-        curr_q_enc = self.q_scale_enc[qp:qp+1, :, :, :]
-        curr_q_dec = self.q_scale_dec[qp:qp+1, :, :, :]
+    def forward_one_frame(self, x, qp, recon_only=False):
+        curr_q_enc = self.index_select_dim0(self.q_scale_enc, qp)
+        curr_q_dec = self.index_select_dim0(self.q_scale_dec, qp)
+        curr_y_q_enc = self.index_select_dim0(self.q_scale_y_enc, qp)
+        curr_y_q_dec = self.index_select_dim0(self.q_scale_y_dec, qp)
 
         y = self.enc(x, curr_q_enc)
-        y_pad = self.pad_for_y(y)
-        z = self.hyper_enc(y_pad)
-        z_hat, z_hat_write = round_and_to_int8(z)
+        z = self.hyper_enc(y)
+        z_hat = QuantFunc.apply(z)
 
         params = self.hyper_dec(z_hat)
         params = self.y_prior_fusion(params)
         _, _, yH, yW = y.shape
-        params = params[:, :, :yH, :yW].contiguous()
-        y_q_w_0, y_q_w_1, y_q_w_2, y_q_w_3, s_w_0, s_w_1, s_w_2, s_w_3, y_hat = \
-            self.compress_prior_4x(
-                y, params, self.y_spatial_prior_reduction,
-                self.y_spatial_prior_adaptor_1, self.y_spatial_prior_adaptor_2,
-                self.y_spatial_prior_adaptor_3, self.y_spatial_prior)
+        params = params[:, :, :yH, :yW]
+        y_res, y_q, y_hat, scales_hat = self.forward_prior_4x(
+            y, curr_y_q_enc, curr_y_q_dec,
+            params, self.y_spatial_prior_reduction,
+            self.y_spatial_prior_adaptor_1, self.y_spatial_prior_adaptor_2,
+            self.y_spatial_prior_adaptor_3, self.y_spatial_prior)
 
-        cuda_event = torch.cuda.Event()
-        cuda_event.record()
-        x_hat = self.dec(y_hat, curr_q_dec).clamp_(0, 1)
+        x_hat = self.dec(y_hat, curr_q_dec)
+        if recon_only:
+            return x_hat
 
-        cuda_stream = self.get_cuda_stream(device=device, priority=-1)
-        with torch.cuda.stream(cuda_stream):
-            cuda_event.wait()
-            self.entropy_coder.reset()
-            self.bit_estimator_z.encode_z(z_hat_write, qp)
-            self.gaussian_encoder.encode_y(y_q_w_0, s_w_0)
-            self.gaussian_encoder.encode_y(y_q_w_1, s_w_1)
-            self.gaussian_encoder.encode_y(y_q_w_2, s_w_2)
-            self.gaussian_encoder.encode_y(y_q_w_3, s_w_3)
-            self.entropy_coder.flush()
+        y_for_bit = self.add_noise(y_res)
+        z_for_bit = self.add_noise(z)
+        bits_y = self.get_y_bits(y_for_bit, scales_hat)
+        bits_z = self.get_z_bits(z_for_bit, qp)
 
-        bit_stream = self.entropy_coder.get_encoded_stream()
+        mse = self.get_mse(x, x_hat)
+        bits_y = torch.sum(bits_y, dim=(1, 2, 3))
+        bits_z = torch.sum(bits_z, dim=(1, 2, 3))
+        _, _, H, W = x.size()
+        pixel_num = H * W
+        bpp = (bits_y + bits_z) / pixel_num
 
-        torch.cuda.synchronize(device=device)
-        result = {
-            "bit_stream": bit_stream,
-            "x_hat": x_hat,
+        return {
+            'x_hat': x_hat,
+            'mse': mse,
+            'bpp': bpp,
+            'bits_y': bits_y,
+            'bits_z': bits_z,
         }
-        return result
 
-    def decompress(self, bit_stream, sps, qp):
-        dtype = next(self.parameters()).dtype
-        device = next(self.parameters()).device
-        curr_q_dec = self.q_scale_dec[qp:qp+1, :, :, :]
+    def compress(self, x, qp, padding_b, padding_r):
+        if self.proxy is None:
+            try:
+                from inference_extensions_cuda import DMCIProxy
+            except Exception:
+                raise NotImplementedError(
+                    'cannot import cuda implementation for inference. '
+                    'Please build the inference extensions first.'
+                )
+            state_dict = self.state_dict()
+            state_dict = self.add_cdf_to_state_dict(state_dict)
+            self.proxy = DMCIProxy()
+            self.proxy.set_param(state_dict, self.gaussian_encoder.skip_thres)
+        bit_stream, x_hat, ec_parallel = self.proxy.compress(x, qp, padding_b, padding_r)
+        return {
+            'bit_stream': bit_stream.tobytes(),
+            'x_hat': x_hat,
+            'ec_parallel': ec_parallel,
+        }
 
-        self.entropy_coder.set_use_two_entropy_coders(sps['ec_part'] == 1)
-        self.entropy_coder.set_stream(bit_stream)
-        z_size = self.get_downsampled_shape(sps['height'], sps['width'], 64)
-        y_height, y_width = self.get_downsampled_shape(sps['height'], sps['width'], 16)
-        self.bit_estimator_z.decode_z(z_size, qp)
-        z_q = self.bit_estimator_z.get_z(z_size, device, dtype)
-        z_hat = z_q
+    def decompress(self, bit_stream, sps, qp, ec_part):
+        x_hat = self.proxy.decompress(
+            np.frombuffer(bit_stream, dtype=np.uint8), qp, sps['height'], sps['width'], ec_part)
+        return {'x_hat': x_hat}
 
-        params = self.hyper_dec(z_hat)
-        params = self.y_prior_fusion(params)
-        params = params[:, :, :y_height, :y_width].contiguous()
-        y_hat = self.decompress_prior_4x(params, self.y_spatial_prior_reduction,
-                                         self.y_spatial_prior_adaptor_1,
-                                         self.y_spatial_prior_adaptor_2,
-                                         self.y_spatial_prior_adaptor_3, self.y_spatial_prior)
-
-        x_hat = self.dec(y_hat, curr_q_dec).clamp_(0, 1)
-        return {"x_hat": x_hat}
+    def forward(self, x, qp, lambdas=None, get_loss_info=False, recon_only=False):
+        result = self.forward_one_frame(x, qp, recon_only)
+        loss = loss_func(result, lambdas)
+        info = None
+        if get_loss_info:
+            _, _, H, W = x.size()
+            pixel_num = H * W
+            info = self.get_loss_info(result, loss, pixel_num)
+        return loss['loss'], info

@@ -1,9 +1,9 @@
 # Copyright (c) Microsoft Corporation.
 # Licensed under the MIT License.
 
+import numpy as np
 import os
 
-import numpy as np
 from PIL import Image
 
 
@@ -28,7 +28,7 @@ class PNGReader():
             return None
 
         png_path = os.path.join(self.src_path,
-                                f"im{str(self.current_frame_index).zfill(self.padding)}.png"
+                                f'im{str(self.current_frame_index).zfill(self.padding)}.png'
                                 )
         if not os.path.exists(png_path):
             self.eof = True
@@ -60,9 +60,7 @@ class YUV420Reader():
         self.uv_size = width * height // 2
         self.uv_width = width // 2
         self.uv_height = height // 2
-        # pylint: disable=R1732
-        self.file = open(src_path, "rb")
-        # pylint: enable=R1732
+        self.file = open(src_path, 'rb')
         skipped_frame = 0
         while not self.eof and skipped_frame < skip_frame:
             y = self.file.read(self.y_size)
@@ -86,5 +84,16 @@ class YUV420Reader():
 
         return y, uv
 
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        self.close()
+        return False
+
+    def __del__(self):
+        self.close()
+
     def close(self):
-        self.file.close()
+        if self.file and not self.file.closed:
+            self.file.close()

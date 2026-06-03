@@ -20,7 +20,7 @@ class PNGWriter():
         rgb = rgb.transpose(1, 2, 0)
 
         png_path = os.path.join(self.dst_path,
-                                f"im{str(self.current_frame_index).zfill(self.padding)}.png"
+                                f'im{str(self.current_frame_index).zfill(self.padding)}.png'
                                 )
         Image.fromarray(rgb).save(png_path)
 
@@ -38,9 +38,7 @@ class YUV420Writer():
         self.width = width
         self.height = height
 
-        # pylint: disable=R1732
-        self.file = open(dst_path, "wb")
-        # pylint: enable=R1732
+        self.file = open(dst_path, 'wb')
 
     def write_one_frame(self, y, uv):
         # y: 1xhxw uint8 numpy array
@@ -48,5 +46,16 @@ class YUV420Writer():
         self.file.write(y.tobytes())
         self.file.write(uv.tobytes())
 
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        self.close()
+        return False
+
+    def __del__(self):
+        self.close()
+
     def close(self):
-        self.file.close()
+        if self.file and not self.file.closed:
+            self.file.close()

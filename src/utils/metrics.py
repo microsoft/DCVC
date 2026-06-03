@@ -2,8 +2,26 @@
 # Licensed under the MIT License.
 
 import numpy as np
-from scipy import signal
+
 from scipy import ndimage
+from scipy import signal
+
+
+def calc_psnr(img1, img2, data_range=255):
+    '''
+    img1 and img2 are arrays with same shape
+    '''
+    img1 = img1.astype(np.float64)
+    img2 = img2.astype(np.float64)
+    mse = np.mean(np.square(img1 - img2))
+    if np.isnan(mse) or np.isinf(mse):
+        return -999.9
+    if mse > 1e-10:
+        psnr = 10 * np.log10(data_range * data_range / mse)
+    else:
+        psnr = 999.9
+    psnr = min(psnr, 99.9)
+    return psnr
 
 
 def fspecial_gauss(size, sigma):
@@ -58,14 +76,11 @@ def calc_msssim(img1, img2, data_range=255):
         ssim_map, cs_map = calc_ssim(im1, im2, data_range=data_range)
         mssim = np.append(mssim, ssim_map.mean())
         mcs = np.append(mcs, cs_map.mean())
-        filtered_im1 = ndimage.filters.convolve(im1, downsample_filter,
-                                                mode='reflect')
-        filtered_im2 = ndimage.filters.convolve(im2, downsample_filter,
-                                                mode='reflect')
+        filtered_im1 = ndimage.convolve(im1, downsample_filter, mode='reflect')
+        filtered_im2 = ndimage.convolve(im2, downsample_filter, mode='reflect')
         im1 = filtered_im1[::2, ::2]
         im2 = filtered_im2[::2, ::2]
-    return (np.prod(mcs[0:level - 1]**weight[0:level - 1]) *
-            (mssim[level - 1]**weight[level - 1]))
+    return (np.prod(mcs[0:level - 1]**weight[0:level - 1]) * (mssim[level - 1]**weight[level - 1]))
 
 
 def calc_msssim_rgb(img1, img2, data_range=255):
@@ -76,21 +91,3 @@ def calc_msssim_rgb(img1, img2, data_range=255):
     for i in range(3):
         msssim += calc_msssim(img1[i, :, :], img2[i, :, :], data_range)
     return msssim / 3
-
-
-def calc_psnr(img1, img2, data_range=255):
-    '''
-    img1 and img2 are arrays with same shape
-    '''
-    img1 = img1.astype(np.float64)
-    img2 = img2.astype(np.float64)
-    mse = np.mean(np.square(img1 - img2))
-    if np.isnan(mse) or np.isinf(mse):
-        return -999.9
-    if mse > 1e-10:
-        psnr = 10 * np.log10(data_range * data_range / mse)
-    else:
-        psnr = 999.9
-    if psnr > 99.9:
-        psnr = 99.9
-    return psnr
