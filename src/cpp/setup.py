@@ -7,7 +7,7 @@ from setuptools import setup
 from pybind11.setup_helpers import Pybind11Extension, build_ext
 
 
-if sys.platform == "win32":
+if sys.platform == 'win32':
     extra_compile_args = ['/std:c++17', '/O2', '/W4', '/WX', '/wd4100']
     extra_link_args = []
 else:
@@ -16,7 +16,7 @@ else:
 
 
 setup(
-    name="MLCodec_extensions_cpp",
+    name='MLCodec_extensions_cpp',
     ext_modules=[
         Pybind11Extension(
             name='MLCodec_extensions_cpp',
@@ -25,7 +25,7 @@ setup(
             extra_link_args=extra_link_args,
         ),
     ],
-    cmdclass={"build_ext": build_ext},
+    cmdclass={'build_ext': build_ext},
     zip_safe=False,
-    python_requires=">=3.12",
+    python_requires='>=3.12',
 )

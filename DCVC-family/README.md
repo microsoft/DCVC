@@ -103,7 +103,7 @@
     <td>
       <a href="https://arxiv.org/abs/2502.20762">Paper (arXiv)</a>
     </td>
-    <td><a href="https://github.com/microsoft/DCVC/tree/main">Code</a></td>
+    <td><a href="DCVC-RT">Code</a></td>
     <td><a href="https://1drv.ms/f/c/2866592d5c55df8c/Esu0KJ-I2kxCjEP565ARx_YB88i0UnR6XnODqFcvZs4LcA?e=by8CO8">Checkpoints</a></td>
   </tr>
   <tr>
@@ -114,6 +114,24 @@
   <tr>
     <td colspan="3">
     <li> The first end-to-end neural video codec achieving 100+ FPS 1080p coding and 4K real-time coding with a comparable compression ratio with ECM.
+    </td>
+  </tr>
+  <tr>
+    <td rowspan="3">DCVC-UF</td>
+    <td>
+      <a href="https://arxiv.org/abs/TODO_arxiv_id">Paper (arXiv)</a>
+    </td>
+    <td><a href="../">Code</a></td>
+    <td><a href="TODO_onedrive_url">Checkpoints</a></td>
+  </tr>
+  <tr>
+    <td colspan="3">
+    Propose an <strong>U</strong>ltra-<strong>F</strong>ast neural video codec with a chunk-based coding framework that eliminates explicit motion vector coding.
+    </td>
+  </tr>
+  <tr>
+    <td colspan="3">
+    <li> Chunk-based framework processes multiple frames simultaneously, achieving ultra-fast encoding and decoding speeds on general-purpose GPUs that scale automatically with GPU generations.
     </td>
   </tr>
   <tr>
@@ -188,6 +206,14 @@
   booktitle={{IEEE/CVF} Conference on Computer Vision and Pattern Recognition,
              {CVPR} 2025, Nashville, TN, USA, June 11-25, 2024},
   year={2025}
+}
+
+@inproceedings{li2026ultra,
+  title={Ultra-Fast Neural Video Compression},
+  author={Li, Jiahao and Xie, Wenxuan and Jia, Zhaoyang and Li, Bin and Guo, Zongyu and Zhang, Xiaoyi and Lu, Yan},
+  booktitle={{IEEE/CVF} Conference on Computer Vision and Pattern Recognition,
+             {CVPR} 2026, Denver, CO, USA, June 3-7, 2026},
+  year={2026}
 }
 
 @inproceedings{wang2023EVC,

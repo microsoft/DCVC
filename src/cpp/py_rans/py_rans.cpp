@@ -4,336 +4,66 @@
 #include "py_rans.h"
 
 #include <algorithm>
-#include <cmath>
 #include <future>
 #include <numeric>
 #include <vector>
 
 namespace py = pybind11;
 
-RansEncoder::RansEncoder()
+// Count trailing identical zero bytes shared between two encoded streams.
+// This allows overlapping the reversed stream to save space.
+static int compute_identical_bytes(const std::vector<uint8_t>& a, int na,
+                                   const std::vector<uint8_t>& b, int nb)
 {
-    m_encoder0 = std::make_shared<RansEncoderLibMultiThread>();
-    m_encoder1 = std::make_shared<RansEncoderLibMultiThread>();
-}
-
-void RansEncoder::encode_y(const py::array_t<int16_t>& symbols, const int cdf_group_index)
-{
-    py::buffer_info symbols_buf = symbols.request();
-    int16_t* symbols_ptr = static_cast<int16_t*>(symbols_buf.ptr);
-
-    int symbolSize = static_cast<int>(symbols.size());
-    if (m_use_two_encoders) {
-        int symbolSize0 = symbolSize / 2;
-        int symbolSize1 = symbolSize - symbolSize0;
-
-        auto vec_symbols0 = std::make_shared<std::vector<int16_t>>(symbolSize0);
-        memcpy(vec_symbols0->data(), symbols_ptr, symbolSize0 * sizeof(int16_t));
-        m_encoder0->encode_y(vec_symbols0, cdf_group_index);
-        auto vec_symbols1 = std::make_shared<std::vector<int16_t>>(symbolSize1);
-        memcpy(vec_symbols1->data(), symbols_ptr + symbolSize0, symbolSize1 * sizeof(int16_t));
-        m_encoder1->encode_y(vec_symbols1, cdf_group_index);
-    } else {
-        auto vec_symbols0 = std::make_shared<std::vector<int16_t>>(symbolSize);
-        memcpy(vec_symbols0->data(), symbols_ptr, symbolSize * sizeof(int16_t));
-        m_encoder0->encode_y(vec_symbols0, cdf_group_index);
-    }
-}
-
-void RansEncoder::encode_z(const py::array_t<int8_t>& symbols, const int cdf_group_index,
-                           const int start_offset, const int per_channel_size)
-{
-    py::buffer_info symbols_buf = symbols.request();
-    int8_t* symbols_ptr = static_cast<int8_t*>(symbols_buf.ptr);
-
-    int symbolSize = static_cast<int>(symbols.size());
-    if (m_use_two_encoders) {
-        int symbolSize0 = symbolSize / 2;
-        int symbolSize1 = symbolSize - symbolSize0;
-        int channel_half = symbolSize0 / per_channel_size;
-
-        auto vec_symbols0 = std::make_shared<std::vector<int8_t>>(symbolSize0);
-        memcpy(vec_symbols0->data(), symbols_ptr, symbolSize0 * sizeof(int8_t));
-        m_encoder0->encode_z(vec_symbols0, cdf_group_index, start_offset, per_channel_size);
-        auto vec_symbols1 = std::make_shared<std::vector<int8_t>>(symbolSize1);
-        memcpy(vec_symbols1->data(), symbols_ptr + symbolSize0, symbolSize1 * sizeof(int8_t));
-        m_encoder1->encode_z(vec_symbols1, cdf_group_index, start_offset + channel_half,
-                             per_channel_size);
-    } else {
-        auto vec_symbols0 = std::make_shared<std::vector<int8_t>>(symbolSize);
-        memcpy(vec_symbols0->data(), symbols_ptr, symbolSize * sizeof(int8_t));
-        m_encoder0->encode_z(vec_symbols0, cdf_group_index, start_offset, per_channel_size);
-    }
-}
-
-int RansEncoder::add_cdf(const py::array_t<int32_t>& cdfs, const py::array_t<int32_t>& cdfs_sizes,
-                         const py::array_t<int32_t>& offsets)
-{
-    py::buffer_info cdfs_sizes_buf = cdfs_sizes.request();
-    py::buffer_info offsets_buf = offsets.request();
-    int32_t* cdfs_sizes_ptr = static_cast<int32_t*>(cdfs_sizes_buf.ptr);
-    int32_t* offsets_ptr = static_cast<int32_t*>(offsets_buf.ptr);
-
-    int cdf_num = static_cast<int>(cdfs_sizes.size());
-    auto vec_cdfs_sizes = std::make_shared<std::vector<int32_t>>(cdf_num);
-    memcpy(vec_cdfs_sizes->data(), cdfs_sizes_ptr, sizeof(int32_t) * cdf_num);
-    auto vec_offsets = std::make_shared<std::vector<int32_t>>(offsets.size());
-    memcpy(vec_offsets->data(), offsets_ptr, sizeof(int32_t) * offsets.size());
-
-    int per_vector_size = static_cast<int>(cdfs.size() / cdf_num);
-    auto vec_cdfs = std::make_shared<std::vector<std::vector<int32_t>>>(cdf_num);
-    auto cdfs_raw = cdfs.unchecked<2>();
-    for (int i = 0; i < cdf_num; i++) {
-        std::vector<int32_t> t(per_vector_size);
-        memcpy(t.data(), cdfs_raw.data(i, 0), sizeof(int32_t) * per_vector_size);
-        vec_cdfs->at(i) = t;
-    }
-
-    int cdf_idx = m_encoder0->add_cdf(vec_cdfs, vec_cdfs_sizes, vec_offsets);
-    m_encoder1->add_cdf(vec_cdfs, vec_cdfs_sizes, vec_offsets);
-    return cdf_idx;
-}
-
-void RansEncoder::empty_cdf_buffer()
-{
-    m_encoder0->empty_cdf_buffer();
-    m_encoder1->empty_cdf_buffer();
-}
-
-void RansEncoder::flush()
-{
-    m_encoder0->flush();
-    m_encoder1->flush();
-}
-
-py::array_t<uint8_t> RansEncoder::get_encoded_stream()
-{
-    if (m_use_two_encoders) {
-        auto result0 = m_encoder0->get_encoded_stream();
-        int nbytes0 = static_cast<int>(result0->size());
-        auto result1 = m_encoder1->get_encoded_stream();
-        int nbytes1 = static_cast<int>(result1->size());
-
-        int identical_bytes = 0;
-        int check_bytes = std::min(nbytes0, nbytes1);
-        check_bytes = std::min(check_bytes, 8);
-        for (int i = 0; i < check_bytes; i++) {
-            if (result0->at(nbytes0 - 1 - i) != 0) {
-                break;
-            }
-            if (result1->at(nbytes1 - 1 - i) != 0) {
-                break;
-            }
-            identical_bytes++;
+    int identical_bytes = 0;
+    int check_bytes = std::min({ na, nb, 8 });
+    for (int i = 0; i < check_bytes; i++) {
+        if (a[na - 1 - i] != 0) {
+            break;
         }
-        if (identical_bytes == 0 && result0->at(nbytes0 - 1) == result1->at(nbytes1 - 1)) {
-            identical_bytes = 1;
+        if (b[nb - 1 - i] != 0) {
+            break;
         }
-
-        py::array_t<uint8_t> stream(nbytes0 + nbytes1 - identical_bytes);
-        py::buffer_info stream_buf = stream.request();
-        uint8_t* stream_ptr = static_cast<uint8_t*>(stream_buf.ptr);
-
-        std::copy(result0->begin(), result0->end(), stream_ptr);
-        std::reverse_copy(result1->begin(), result1->end() - identical_bytes, stream_ptr + nbytes0);
-        return stream;
+        identical_bytes++;
     }
-
-    auto result0 = m_encoder0->get_encoded_stream();
-    int nbytes0 = static_cast<int>(result0->size());
-
-    py::array_t<uint8_t> stream(nbytes0);
-    py::buffer_info stream_buf = stream.request();
-    uint8_t* stream_ptr = static_cast<uint8_t*>(stream_buf.ptr);
-
-    std::copy(result0->begin(), result0->end(), stream_ptr);
-    return stream;
-}
-
-void RansEncoder::reset()
-{
-    m_encoder0->reset();
-    m_encoder1->reset();
-}
-
-void RansEncoder::set_use_two_encoders(bool b)
-{
-    m_use_two_encoders = b;
-}
-
-bool RansEncoder::get_use_two_encoders()
-{
-    return m_use_two_encoders;
-}
-
-RansDecoder::RansDecoder()
-{
-    m_decoder0 = std::make_shared<RansDecoderLibMultiThread>();
-    m_decoder1 = std::make_shared<RansDecoderLibMultiThread>();
-}
-
-void RansDecoder::set_stream(const py::array_t<uint8_t>& encoded)
-{
-    py::buffer_info encoded_buf = encoded.request();
-    const uint8_t* encoded_ptr = static_cast<uint8_t*>(encoded_buf.ptr);
-    const int encoded_size = static_cast<int>(encoded.size());
-    auto stream0 = std::make_shared<std::vector<uint8_t>>(encoded.size());
-    std::copy(encoded_ptr, encoded_ptr + encoded_size, stream0->data());
-    m_decoder0->set_stream(stream0);
-    if (m_use_two_decoders) {
-        auto stream1 = std::make_shared<std::vector<uint8_t>>(encoded.size());
-        std::reverse_copy(encoded_ptr, encoded_ptr + encoded_size, stream1->data());
-        m_decoder1->set_stream(stream1);
+    if (identical_bytes == 0 && a[na - 1] == b[nb - 1]) {
+        identical_bytes = 1;
     }
+    return identical_bytes;
 }
 
-void RansDecoder::decode_y(const py::array_t<uint8_t>& indexes, const int cdf_group_index)
-{
-    py::buffer_info indexes_buf = indexes.request();
-    uint8_t* indexes_ptr = static_cast<uint8_t*>(indexes_buf.ptr);
-
-    int indexSize = static_cast<int>(indexes.size());
-    if (m_use_two_decoders) {
-        int indexSize0 = indexSize / 2;
-        int indexSize1 = indexSize - indexSize0;
-
-        auto vec_indexes0 = std::make_shared<std::vector<uint8_t>>(indexSize0);
-        std::copy(indexes_ptr, indexes_ptr + indexSize0, vec_indexes0->data());
-        m_decoder0->decode_y(vec_indexes0, cdf_group_index);
-
-        auto vec_indexes1 = std::make_shared<std::vector<uint8_t>>(indexSize1);
-        std::copy(indexes_ptr + indexSize0, indexes_ptr + indexSize, vec_indexes1->data());
-        m_decoder1->decode_y(vec_indexes1, cdf_group_index);
-    } else {
-        auto vec_indexes0 = std::make_shared<std::vector<uint8_t>>(indexSize);
-        std::copy(indexes_ptr, indexes_ptr + indexSize, vec_indexes0->data());
-        m_decoder0->decode_y(vec_indexes0, cdf_group_index);
-    }
-}
-
-py::array_t<int8_t> RansDecoder::decode_and_get_y(const py::array_t<uint8_t>& indexes,
-                                                  const int cdf_group_index)
-{
-    decode_y(indexes, cdf_group_index);
-    return get_decoded_tensor();
-}
-
-void RansDecoder::decode_z(const int total_size, const int cdf_group_index, const int start_offset,
-                           const int per_channel_size)
-{
-    if (m_use_two_decoders) {
-        int symbolSize0 = total_size / 2;
-        int symbolSize1 = total_size - symbolSize0;
-        int channel_half = symbolSize0 / per_channel_size;
-        m_decoder0->decode_z(symbolSize0, cdf_group_index, start_offset, per_channel_size);
-        m_decoder1->decode_z(symbolSize1, cdf_group_index, start_offset + channel_half,
-                             per_channel_size);
-    } else {
-        m_decoder0->decode_z(total_size, cdf_group_index, start_offset, per_channel_size);
-    }
-}
-
-py::array_t<int8_t> RansDecoder::get_decoded_tensor()
-{
-    if (m_use_two_decoders) {
-        auto result0 = m_decoder0->get_decoded_tensor();
-        const int total_size0 = static_cast<int>(result0->size());
-
-        auto result1 = m_decoder1->get_decoded_tensor();
-        const int total_size1 = static_cast<int>(result1->size());
-        py::array_t<int8_t> output(total_size0 + total_size1);
-        py::buffer_info buf = output.request();
-        int8_t* buf_ptr = static_cast<int8_t*>(buf.ptr);
-        std::copy(result0->begin(), result0->end(), buf_ptr);
-        std::copy(result1->begin(), result1->end(), buf_ptr + total_size0);
-
-        return output;
-    }
-
-    auto result0 = m_decoder0->get_decoded_tensor();
-    const int total_size0 = static_cast<int>(result0->size());
-
-    py::array_t<int8_t> output(total_size0);
-    py::buffer_info buf = output.request();
-    int8_t* buf_ptr = static_cast<int8_t*>(buf.ptr);
-    std::copy(result0->begin(), result0->end(), buf_ptr);
-
-    return output;
-}
-
-int RansDecoder::add_cdf(const py::array_t<int32_t>& cdfs, const py::array_t<int32_t>& cdfs_sizes,
-                         const py::array_t<int32_t>& offsets)
-{
-    py::buffer_info cdfs_sizes_buf = cdfs_sizes.request();
-    py::buffer_info offsets_buf = offsets.request();
-    int32_t* cdfs_sizes_ptr = static_cast<int32_t*>(cdfs_sizes_buf.ptr);
-    int32_t* offsets_ptr = static_cast<int32_t*>(offsets_buf.ptr);
-
-    int cdf_num = static_cast<int>(cdfs_sizes.size());
-    auto vec_cdfs_sizes = std::make_shared<std::vector<int32_t>>(cdf_num);
-    memcpy(vec_cdfs_sizes->data(), cdfs_sizes_ptr, sizeof(int32_t) * cdf_num);
-    auto vec_offsets = std::make_shared<std::vector<int32_t>>(offsets.size());
-    memcpy(vec_offsets->data(), offsets_ptr, sizeof(int32_t) * offsets.size());
-
-    int per_vector_size = static_cast<int>(cdfs.size() / cdf_num);
-    auto vec_cdfs = std::make_shared<std::vector<std::vector<int32_t>>>(cdf_num);
-    auto cdfs_raw = cdfs.unchecked<2>();
-    for (int i = 0; i < cdf_num; i++) {
-        std::vector<int32_t> t(per_vector_size);
-        memcpy(t.data(), cdfs_raw.data(i, 0), sizeof(int32_t) * per_vector_size);
-        vec_cdfs->at(i) = t;
-    }
-    int cdf_idx = m_decoder0->add_cdf(vec_cdfs, vec_cdfs_sizes, vec_offsets);
-    m_decoder1->add_cdf(vec_cdfs, vec_cdfs_sizes, vec_offsets);
-    return cdf_idx;
-}
-
-void RansDecoder::empty_cdf_buffer()
-{
-    m_decoder0->empty_cdf_buffer();
-    m_decoder1->empty_cdf_buffer();
-}
-
-void RansDecoder::set_use_two_decoders(bool b)
-{
-    m_use_two_decoders = b;
-}
-
-bool RansDecoder::get_use_two_decoders()
-{
-    return m_use_two_decoders;
-}
-
-std::vector<uint32_t> pmf_to_quantized_cdf(const std::vector<float>& pmf, int precision)
+std::vector<uint32_t> pmf_to_quantized_cdf(const std::vector<float>& pmf)
 {
     /* NOTE(begaintj): ported from `ryg_rans` public implementation. Not optimal
      * although it's only run once per model after training. See TF/compression
      * implementation for an optimized version. */
+    constexpr int precision = 16;
+    constexpr uint32_t prob_max = (1u << precision);
+    constexpr int min_freq = 1;
 
     std::vector<uint32_t> cdf(pmf.size() + 1);
     cdf[0] = 0; /* freq 0 */
 
-    std::transform(pmf.begin(), pmf.end(), cdf.begin() + 1, [=](float p) {
-        return static_cast<uint32_t>(std::round(p * (1 << precision)) + 0.5);
-    });
+    std::transform(pmf.begin(), pmf.end(), cdf.begin() + 1,
+                   [=](float p) { return static_cast<uint32_t>(p * prob_max + 0.5); });
 
     const uint32_t total = std::accumulate(cdf.begin(), cdf.end(), 0);
 
-    std::transform(cdf.begin(), cdf.end(), cdf.begin(), [precision, total](uint32_t p) {
-        return static_cast<uint32_t>((((1ull << precision) * p) / total));
+    std::transform(cdf.begin(), cdf.end(), cdf.begin(), [=](uint32_t p) {
+        return static_cast<uint32_t>(((static_cast<uint64_t>(prob_max) * p) / total));
     });
 
     std::partial_sum(cdf.begin(), cdf.end(), cdf.begin());
-    cdf.back() = 1 << precision;
+    cdf.back() = prob_max;
 
     for (int i = 0; i < static_cast<int>(cdf.size() - 1); ++i) {
-        if (cdf[i] == cdf[i + 1]) {
+        if (cdf[i] + min_freq > cdf[i + 1]) {
             /* Try to steal frequency from low-frequency symbols */
             uint32_t best_freq = ~0u;
             int best_steal = -1;
             for (int j = 0; j < static_cast<int>(cdf.size()) - 1; ++j) {
                 uint32_t freq = cdf[j + 1] - cdf[j];
-                if (freq > 1 && freq < best_freq) {
+                if (freq >= min_freq * 2 && freq < best_freq) {
                     best_freq = freq;
                     best_steal = j;
                 }
@@ -343,19 +73,19 @@ std::vector<uint32_t> pmf_to_quantized_cdf(const std::vector<float>& pmf, int pr
 
             if (best_steal < i) {
                 for (int j = best_steal + 1; j <= i; ++j) {
-                    cdf[j]--;
+                    cdf[j] -= min_freq;
                 }
             } else {
                 assert(best_steal > i);
                 for (int j = i + 1; j <= best_steal; ++j) {
-                    cdf[j]++;
+                    cdf[j] += min_freq;
                 }
             }
         }
     }
 
     assert(cdf[0] == 0);
-    assert(cdf.back() == (1u << precision));
+    assert(cdf.back() == prob_max);
     for (int i = 0; i < static_cast<int>(cdf.size()) - 1; ++i) {
         assert(cdf[i + 1] > cdf[i]);
     }
@@ -363,31 +93,408 @@ std::vector<uint32_t> pmf_to_quantized_cdf(const std::vector<float>& pmf, int pr
     return cdf;
 }
 
-PYBIND11_MODULE(MLCodec_extensions_cpp, m)
+RansEncoder::RansEncoder()
 {
-    py::class_<RansEncoder>(m, "RansEncoder")
-        .def(py::init<>())
-        .def("encode_y", &RansEncoder::encode_y)
-        .def("encode_z", &RansEncoder::encode_z)
-        .def("flush", &RansEncoder::flush)
-        .def("get_encoded_stream", &RansEncoder::get_encoded_stream)
-        .def("reset", &RansEncoder::reset)
-        .def("add_cdf", &RansEncoder::add_cdf)
-        .def("empty_cdf_buffer", &RansEncoder::empty_cdf_buffer)
-        .def("set_use_two_encoders", &RansEncoder::set_use_two_encoders)
-        .def("get_use_two_encoders", &RansEncoder::get_use_two_encoders);
+    m_encoders.resize(MAX_EC_PARALLEL);
+    for (int i = 0; i < MAX_EC_PARALLEL; i++) {
+        m_encoders[i] = std::make_shared<RansEncoderLib>();
+    }
+}
 
-    py::class_<RansDecoder>(m, "RansDecoder")
-        .def(py::init<>())
-        .def("set_stream", &RansDecoder::set_stream)
-        .def("decode_y", &RansDecoder::decode_y)
-        .def("decode_and_get_y", &RansDecoder::decode_and_get_y)
-        .def("decode_z", &RansDecoder::decode_z)
-        .def("get_decoded_tensor", &RansDecoder::get_decoded_tensor)
-        .def("add_cdf", &RansDecoder::add_cdf)
-        .def("empty_cdf_buffer", &RansDecoder::empty_cdf_buffer)
-        .def("set_use_two_decoders", &RansDecoder::set_use_two_decoders)
-        .def("get_use_two_decoders", &RansDecoder::get_use_two_decoders);
+void RansEncoder::encode_y(const std::shared_ptr<std::vector<int16_t>>& symbols, const int symbolSize)
+{
+    int n = m_entropy_coder_parallel;
+    int size0 = symbolSize / n;
+    for (int i = 0; i < n - 1; i++) {
+        m_encoders[i]->encode_y(symbols, size0, size0 * i);
+    }
+    m_encoders[n - 1]->encode_y(symbols, symbolSize - size0 * (n - 1), size0 * (n - 1));
+}
 
-    m.def("pmf_to_quantized_cdf", &pmf_to_quantized_cdf, "Return quantized CDF for a given PMF");
+void RansEncoder::encode_y(const py::array_t<int16_t>& symbols)
+{
+    py::buffer_info symbols_buf = symbols.request();
+    int16_t* symbols_ptr = static_cast<int16_t*>(symbols_buf.ptr);
+
+    int symbolSize = static_cast<int>(symbols.size());
+    auto vec_symbols = std::make_shared<std::vector<int16_t>>(symbolSize);
+    std::copy(symbols_ptr, symbols_ptr + symbolSize, vec_symbols->data());
+    encode_y(vec_symbols, symbolSize);
+}
+
+void RansEncoder::encode_z(const std::shared_ptr<std::vector<int8_t>>& symbols,
+                           const int cdf_offset, const int ch)
+{
+    int symbolSize = static_cast<int>(symbols->size());
+    int n = m_entropy_coder_parallel;
+    int size0 = symbolSize / n;
+    for (int i = 0; i < n - 1; i++) {
+        m_encoders[i]->encode_z(symbols, size0, size0 * i, cdf_offset, ch);
+    }
+    m_encoders[n - 1]->encode_z(symbols, symbolSize - size0 * (n - 1), size0 * (n - 1), cdf_offset, ch);
+}
+
+void RansEncoder::encode_z(const py::array_t<int8_t>& symbols, const int cdf_offset, const int ch)
+{
+    py::buffer_info symbols_buf = symbols.request();
+    int8_t* symbols_ptr = static_cast<int8_t*>(symbols_buf.ptr);
+
+    int symbolSize = static_cast<int>(symbols.size());
+    auto vec_symbols = std::make_shared<std::vector<int8_t>>(symbolSize);
+    std::copy(symbols_ptr, symbols_ptr + symbolSize, vec_symbols->data());
+    encode_z(vec_symbols, cdf_offset, ch);
+}
+
+void RansEncoder::flush()
+{
+    int n = m_entropy_coder_parallel;
+    for (int i = 0; i < n; i++) {
+        m_encoders[i]->flush();
+    }
+}
+
+py::array_t<uint8_t> RansEncoder::get_encoded_stream()
+{
+    int n = m_entropy_coder_parallel;
+
+    // Collect all encoded streams
+    std::vector<std::shared_ptr<std::vector<uint8_t>>> results(n);
+    std::vector<int> nbytes(n);
+    for (int i = 0; i < n; i++) {
+        results[i] = m_encoders[i]->get_encoded_stream();
+        nbytes[i] = static_cast<int>(results[i]->size());
+    }
+
+    if (n == 1) {
+        /**
+         * The input arguments to py::array_t<uint8_t> constructor are array size and stride.
+         * The code may fail to perform correct encoding-decoding by omitting array stride.
+         * It would be more robust by explicitly specifying the stride.
+         *
+         * By only passing the array size, i.e., "py::array_t<uint8_t> stream(nbytes0);",
+         * our empirical results are as follows:
+         *   pybind11==3.0.1,  numpy==2.3.3:  succeeded
+         *   pybind11==2.10.4, numpy==1.26.0: succeeded
+         *   pybind11==2.10.4, numpy==2.3.3:  failed. the array stride defaults to 0
+         */
+        py::array_t<uint8_t> stream({ nbytes[0] }, { sizeof(uint8_t) });
+        py::buffer_info stream_buf = stream.request();
+        uint8_t* stream_ptr = static_cast<uint8_t*>(stream_buf.ptr);
+        std::copy(results[0]->begin(), results[0]->end(), stream_ptr);
+        return stream;
+    }
+
+    // For n >= 2, streams are paired: (0,1), (2,3), ...
+    // Each pair is merged: stream[2k] forward + stream[2k+1] reversed with zero-byte overlap.
+    // If n is odd, the last stream stands alone (forward only).
+    int num_pairs = n / 2;
+    bool has_tail = (n % 2 != 0);
+
+    // Compute group sizes (each pair merged) and the tail
+    std::vector<int> group_sizes(num_pairs);
+    std::vector<int> identical(num_pairs);
+    for (int p = 0; p < num_pairs; p++) {
+        int i0 = p * 2;
+        int i1 = p * 2 + 1;
+        identical[p] = compute_identical_bytes(*results[i0], nbytes[i0], *results[i1], nbytes[i1]);
+        group_sizes[p] = nbytes[i0] + nbytes[i1] - identical[p];
+    }
+    int tail_size = has_tail ? nbytes[n - 1] : 0;
+
+    // Header: (num_pairs - 1 + has_tail) int32_t offsets
+    // For n==2 (1 pair, no tail): 0 offsets, no header
+    int num_offsets = num_pairs - 1 + (has_tail ? 1 : 0);
+    int header_size = num_offsets * 4;
+
+    int total_size = header_size;
+    for (int p = 0; p < num_pairs; p++) {
+        total_size += group_sizes[p];
+    }
+    total_size += tail_size;
+
+    py::array_t<uint8_t> stream({ total_size }, { sizeof(uint8_t) });
+    py::buffer_info stream_buf = stream.request();
+    uint8_t* stream_ptr = static_cast<uint8_t*>(stream_buf.ptr);
+
+    // Write header: cumulative offsets for groups after the first
+    // offset[k] = cumulative size of groups 0..k (so decoder knows where group k+1 starts)
+    int cumulative = group_sizes[0];
+    for (int k = 0; k < num_offsets; k++) {
+        *reinterpret_cast<int32_t*>(stream_ptr + k * 4) = cumulative;
+        if (k + 1 < num_pairs) {
+            cumulative += group_sizes[k + 1];
+        } else {
+            // This offset points to the tail start (== total payload without header)
+            // Already correct: cumulative == sum of all group_sizes
+        }
+    }
+
+    // Write groups
+    int pos = header_size;
+    for (int p = 0; p < num_pairs; p++) {
+        int i0 = p * 2;
+        int i1 = p * 2 + 1;
+        std::copy(results[i0]->begin(), results[i0]->end(), stream_ptr + pos);
+        std::reverse_copy(results[i1]->begin(), results[i1]->end() - identical[p],
+                          stream_ptr + pos + nbytes[i0]);
+        pos += group_sizes[p];
+    }
+
+    // Write tail
+    if (has_tail) {
+        std::copy(results[n - 1]->begin(), results[n - 1]->end(), stream_ptr + pos);
+    }
+
+    return stream;
+}
+
+void RansEncoder::reset()
+{
+    for (int i = 0; i < MAX_EC_PARALLEL; i++) {
+        m_encoders[i]->reset();
+    }
+}
+
+void RansEncoder::set_cdf(const std::shared_ptr<std::vector<int32_t>>& cdfs,
+                          const std::shared_ptr<std::vector<int32_t>>& cdfs_sizes, const int index)
+{
+    int cdf_num = static_cast<int>(cdfs_sizes->size());
+    int per_vector_size = static_cast<int>(cdfs->size() / cdf_num);
+    auto max_value = std::make_shared<std::vector<int8_t>>(cdf_num);
+    auto ransSymbols = std::make_shared<std::vector<std::vector<RansSymbol>>>(cdf_num);
+    for (int i = 0; i < cdf_num; i++) {
+        max_value->at(i) = static_cast<int8_t>(cdfs_sizes->at(i) - 2);
+
+        const int32_t* cdf = cdfs->data() + i * per_vector_size;
+        std::vector<RansSymbol> ransSym(per_vector_size);
+        const int ransSize = per_vector_size - 1;
+        for (int j = 0; j < ransSize; j++) {
+            ransSym[j] = RansSymbol(
+                { static_cast<uint16_t>(cdf[j]), static_cast<uint16_t>(cdf[j + 1] - cdf[j]) });
+        }
+        ransSymbols->at(i) = std::move(ransSym);
+    }
+
+    for (int i = 0; i < MAX_EC_PARALLEL; i++) {
+        m_encoders[i]->set_cdf(ransSymbols, max_value, index);
+    }
+}
+
+void RansEncoder::set_cdf(const py::array_t<int32_t>& cdfs, const py::array_t<int32_t>& cdfs_sizes,
+                          const int index)
+{
+    py::buffer_info cdfs_buf = cdfs.request();
+    py::buffer_info cdfs_sizes_buf = cdfs_sizes.request();
+    int32_t* cdfs_ptr = static_cast<int32_t*>(cdfs_buf.ptr);
+    int32_t* cdfs_sizes_ptr = static_cast<int32_t*>(cdfs_sizes_buf.ptr);
+
+    auto vec_cdfs = std::make_shared<std::vector<int32_t>>(cdfs.size());
+    std::copy(cdfs_ptr, cdfs_ptr + cdfs.size(), vec_cdfs->data());
+    auto vec_cdfs_sizes = std::make_shared<std::vector<int32_t>>(cdfs_sizes.size());
+    std::copy(cdfs_sizes_ptr, cdfs_sizes_ptr + cdfs_sizes.size(), vec_cdfs_sizes->data());
+
+    set_cdf(vec_cdfs, vec_cdfs_sizes, index);
+}
+
+void RansEncoder::set_entropy_coder_parallel(int n)
+{
+    assert(n >= 1 && n <= MAX_EC_PARALLEL);
+    m_entropy_coder_parallel = n;
+}
+
+RansDecoder::RansDecoder()
+{
+    m_decoded_tensor = std::make_shared<std::vector<int8_t>>(3840 * 2160 / 16 / 16 * 128 * 2);
+    m_decoders.resize(MAX_EC_PARALLEL);
+    for (int i = 0; i < MAX_EC_PARALLEL; i++) {
+        m_decoders[i] = std::make_shared<RansDecoderLib>();
+    }
+}
+
+void RansDecoder::decode_y(const std::shared_ptr<std::vector<uint8_t>>& indexes, const int indexSize)
+{
+    m_current_decoded_tensor_size = indexSize;
+    if (m_decoded_tensor == nullptr || static_cast<int>(m_decoded_tensor->size()) < indexSize) {
+        m_decoded_tensor = std::make_shared<std::vector<int8_t>>(indexSize * 2);
+    }
+    int8_t* decoded_ptr = m_decoded_tensor->data();
+
+    int n = m_entropy_coder_parallel;
+    int size0 = indexSize / n;
+    for (int i = 0; i < n - 1; i++) {
+        m_decoders[i]->decode_y(decoded_ptr, indexes, size0, size0 * i);
+    }
+    m_decoders[n - 1]->decode_y(decoded_ptr, indexes, indexSize - size0 * (n - 1), size0 * (n - 1));
+}
+
+void RansDecoder::decode_y(const py::array_t<uint8_t>& indexes)
+{
+    py::buffer_info indexes_buf = indexes.request();
+    uint8_t* indexes_ptr = static_cast<uint8_t*>(indexes_buf.ptr);
+
+    int indexSize = static_cast<int>(indexes.size());
+    auto vec_indexes = std::make_shared<std::vector<uint8_t>>(indexSize);
+    std::copy(indexes_ptr, indexes_ptr + indexSize, vec_indexes->data());
+
+    decode_y(vec_indexes, indexSize);
+}
+
+void RansDecoder::decode_z(const int total_size, const int cdf_offset, const int ch)
+{
+    m_current_decoded_tensor_size = total_size;
+    if (m_decoded_tensor == nullptr || static_cast<int>(m_decoded_tensor->size()) < total_size) {
+        m_decoded_tensor = std::make_shared<std::vector<int8_t>>(total_size * 2);
+    }
+    int8_t* decoded_ptr = m_decoded_tensor->data();
+
+    int n = m_entropy_coder_parallel;
+    int size0 = total_size / n;
+    for (int i = 0; i < n - 1; i++) {
+        m_decoders[i]->decode_z(decoded_ptr, size0, size0 * i, cdf_offset, ch);
+    }
+    m_decoders[n - 1]->decode_z(decoded_ptr, total_size - size0 * (n - 1), size0 * (n - 1),
+                                cdf_offset, ch);
+}
+
+std::shared_ptr<std::vector<int8_t>> RansDecoder::get_decoded_tensor_cpp()
+{
+    int n = m_entropy_coder_parallel;
+    for (int i = 0; i < n; i++) {
+        m_decoders[i]->wait_for_decoding_finish();
+    }
+    return m_decoded_tensor;
+}
+
+void RansDecoder::set_cdf(const std::shared_ptr<std::vector<int32_t>>& cdfs,
+                          const std::shared_ptr<std::vector<int32_t>>& cdfs_sizes, const int index)
+{
+    int cdf_num = static_cast<int>(cdfs_sizes->size());
+
+    int per_vector_size = static_cast<int>(cdfs->size() / cdf_num);
+    auto vec_cdfs = std::make_shared<std::vector<std::vector<int32_t>>>(cdf_num);
+    auto max_value = std::make_shared<std::vector<int8_t>>(cdf_num);
+    for (int i = 0; i < cdf_num; i++) {
+        max_value->at(i) = static_cast<int8_t>(cdfs_sizes->at(i) - 2);
+
+        std::vector<int32_t> t(per_vector_size);
+        std::copy(cdfs->data() + i * per_vector_size,
+                  cdfs->data() + i * per_vector_size + per_vector_size, t.data());
+        vec_cdfs->at(i) = std::move(t);
+    }
+
+    for (int i = 0; i < MAX_EC_PARALLEL; i++) {
+        m_decoders[i]->set_cdf(vec_cdfs, max_value, index);
+    }
+}
+
+void RansDecoder::set_cdf(const py::array_t<int32_t>& cdfs, const py::array_t<int32_t>& cdfs_sizes,
+                          const int index)
+{
+    py::buffer_info cdfs_buf = cdfs.request();
+    py::buffer_info cdfs_sizes_buf = cdfs_sizes.request();
+    int32_t* cdfs_ptr = static_cast<int32_t*>(cdfs_buf.ptr);
+    int32_t* cdfs_sizes_ptr = static_cast<int32_t*>(cdfs_sizes_buf.ptr);
+
+    auto vec_cdfs = std::make_shared<std::vector<int32_t>>(cdfs.size());
+    std::copy(cdfs_ptr, cdfs_ptr + cdfs.size(), vec_cdfs->data());
+    auto vec_cdfs_sizes = std::make_shared<std::vector<int32_t>>(cdfs_sizes.size());
+    std::copy(cdfs_sizes_ptr, cdfs_sizes_ptr + cdfs_sizes.size(), vec_cdfs_sizes->data());
+
+    set_cdf(vec_cdfs, vec_cdfs_sizes, index);
+}
+
+void RansDecoder::set_entropy_coder_parallel(int n)
+{
+    assert(n >= 1 && n <= MAX_EC_PARALLEL);
+    m_entropy_coder_parallel = n;
+}
+
+void RansDecoder::set_stream(const uint8_t* ptr, const int size)
+{
+    int n = m_entropy_coder_parallel;
+
+    if (n == 1) {
+        auto stream0 = std::make_shared<std::vector<uint8_t>>(size);
+        std::copy(ptr, ptr + size, stream0->data());
+        m_decoders[0]->set_stream(stream0);
+        return;
+    }
+
+    if (n == 2) {
+        // No header, entire buffer is one pair
+        auto stream0 = std::make_shared<std::vector<uint8_t>>(size);
+        std::copy(ptr, ptr + size, stream0->data());
+        m_decoders[0]->set_stream(stream0);
+
+        auto stream1 = std::make_shared<std::vector<uint8_t>>(size);
+        std::reverse_copy(ptr, ptr + size, stream1->data());
+        m_decoders[1]->set_stream(stream1);
+        return;
+    }
+
+    // n >= 3: header + groups + optional tail
+    int num_pairs = n / 2;
+    bool has_tail = (n % 2 != 0);
+    int num_offsets = num_pairs - 1 + (has_tail ? 1 : 0);
+    int header_size = num_offsets * 4;
+
+    // Read cumulative offsets
+    std::vector<int> offsets(num_offsets);
+    for (int k = 0; k < num_offsets; k++) {
+        offsets[k] = *reinterpret_cast<const int32_t*>(ptr + k * 4);
+    }
+
+    // Compute group start/end positions (relative to after header)
+    const uint8_t* payload = ptr + header_size;
+    int payload_size = size - header_size;
+
+    std::vector<int> group_start(num_pairs);
+    std::vector<int> group_size(num_pairs);
+    group_start[0] = 0;
+    group_size[0] = offsets[0];  // first offset == size of first group
+    for (int p = 1; p < num_pairs; p++) {
+        group_start[p] = offsets[p - 1];
+        if (p < num_offsets) {
+            group_size[p] = offsets[p] - offsets[p - 1];
+        } else {
+            // Last group: extends to end of payload (or to tail start)
+            int groups_end = has_tail ? offsets[num_offsets - 1] : payload_size;
+            group_size[p] = groups_end - offsets[p - 1];
+        }
+    }
+
+    // Set streams for each pair
+    for (int p = 0; p < num_pairs; p++) {
+        int i0 = p * 2;
+        int i1 = p * 2 + 1;
+        const uint8_t* group_ptr = payload + group_start[p];
+        int gs = group_size[p];
+
+        auto s0 = std::make_shared<std::vector<uint8_t>>(gs);
+        std::copy(group_ptr, group_ptr + gs, s0->data());
+        m_decoders[i0]->set_stream(s0);
+
+        auto s1 = std::make_shared<std::vector<uint8_t>>(gs);
+        std::reverse_copy(group_ptr, group_ptr + gs, s1->data());
+        m_decoders[i1]->set_stream(s1);
+    }
+
+    // Tail
+    if (has_tail) {
+        int tail_start = offsets[num_offsets - 1];
+        int tail_size = payload_size - tail_start;
+        const uint8_t* tail_ptr = payload + tail_start;
+
+        auto s = std::make_shared<std::vector<uint8_t>>(tail_size);
+        std::copy(tail_ptr, tail_ptr + tail_size, s->data());
+        m_decoders[n - 1]->set_stream(s);
+    }
+}
+
+void RansDecoder::set_stream(const py::array_t<uint8_t>& encoded)
+{
+    py::buffer_info encoded_buf = encoded.request();
+    const uint8_t* encoded_ptr = static_cast<uint8_t*>(encoded_buf.ptr);
+    const int encoded_size = static_cast<int>(encoded.size());
+    set_stream(encoded_ptr, encoded_size);
 }

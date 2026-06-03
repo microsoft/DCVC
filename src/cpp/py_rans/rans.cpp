@@ -1,134 +1,175 @@
-/* Copyright 2020 InterDigital Communications, Inc.
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *    http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- */
-
-/* Rans64 extensions from:
- * https://fgiesen.wordpress.com/2015/12/21/rans-in-practice/
- * Unbounded range coding from:
- * https://github.com/tensorflow/compression/blob/master/tensorflow_compression/cc/kernels/unbounded_index_range_coding_kernels.cc
- **/
+// Copyright (c) Microsoft Corporation.
+// Licensed under the MIT License.
 
 #include "rans.h"
 
 #include <algorithm>
 #include <cassert>
+#include <cmath>
 #include <cstring>
+#include <stdexcept>
+#include <string>
 
-constexpr uint16_t bypass_precision = 2; /* number of bits in bypass mode */
-constexpr uint16_t max_bypass_val = (1 << bypass_precision) - 1;
+constexpr int SCALE_BITS = 16;
+constexpr int RANS_SHIFT_BITS = 23;
+constexpr uint32_t RANS_BYTE_L = 1u << RANS_SHIFT_BITS;
+constexpr int ENC_RENORM_SHIFT_BITS = RANS_SHIFT_BITS - SCALE_BITS + 8;
+constexpr uint32_t DEC_MASK = (1u << SCALE_BITS) - 1;
+constexpr uint16_t BYPASS_PRECISION = 2;  // number of bits in bypass mode
+constexpr uint16_t MAX_BYPASS_VAL = (1 << BYPASS_PRECISION) - 1;
 
-inline void RansEncPutBits(RansState& r, uint8_t*& ptr, uint32_t val)
+#if defined(__GNUC__) || defined(__clang__)
+    #define FORCE_INLINE inline __attribute__((always_inline))
+#elif defined(_MSC_VER)
+    #define FORCE_INLINE __forceinline
+#else
+    #define FORCE_INLINE inline
+#endif
+
+FORCE_INLINE void RansDecAdvance(RansState& r, const uint8_t*& ptr, uint32_t start, uint32_t freq)
 {
-    RansAssert(bypass_precision <= 8);
-    RansAssert(val < (1u << bypass_precision));
+    r = freq * (r >> SCALE_BITS) + (r & DEC_MASK) - start;
 
-    constexpr uint32_t freq = 1 << (SCALE_BITS - bypass_precision);
-    constexpr uint32_t x_max = freq << ENC_RENORM_SHIFT_BITS;
-    while (r >= x_max) {
-        *(--ptr) = static_cast<uint8_t>(r & 0xff);
-        r >>= 8;
+    // renormalize
+    while (r < RANS_BYTE_L) {
+        r = (r << 8) | *ptr++;
     }
-
-    r = (r << bypass_precision) | val;
 }
 
-inline uint32_t RansDecGetBits(RansState& r, uint8_t*& ptr)
+FORCE_INLINE int32_t RansDecGet(RansState& r)
 {
-    uint32_t val = r & ((1u << bypass_precision) - 1);
+    return r & DEC_MASK;
+}
 
-    /* Re-normalize */
-    r = r >> bypass_precision;
+FORCE_INLINE uint32_t RansDecGetBits(RansState& r, const uint8_t*& ptr)
+{
+    uint32_t val = r & ((1u << BYPASS_PRECISION) - 1);
+
+    // renormalize
+    r = r >> BYPASS_PRECISION;
     if (r < RANS_BYTE_L) {
         r = (r << 8) | *ptr++;
-        RansAssert(r >= RANS_BYTE_L);
+        assert(r >= RANS_BYTE_L);
     }
 
     return val;
 }
 
-RansEncoderLib::RansEncoderLib()
+FORCE_INLINE void RansDecInit(RansState& r, const uint8_t*& ptr)
 {
-    _stream = std::make_shared<std::vector<uint8_t>>();
+    r = (*ptr++) << 0;
+    r |= (*ptr++) << 8;
+    r |= (*ptr++) << 16;
+    r |= (*ptr++) << 24;
 }
 
-int RansEncoderLib::add_cdf(const std::shared_ptr<std::vector<std::vector<int32_t>>> cdfs,
-                            const std::shared_ptr<std::vector<int32_t>> cdfs_sizes,
-                            const std::shared_ptr<std::vector<int32_t>> offsets)
+FORCE_INLINE void RansEncFlush(const RansState& r, uint8_t*& ptr)
 {
+    ptr -= 4;
+    ptr[0] = static_cast<uint8_t>(r >> 0);
+    ptr[1] = static_cast<uint8_t>(r >> 8);
+    ptr[2] = static_cast<uint8_t>(r >> 16);
+    ptr[3] = static_cast<uint8_t>(r >> 24);
+}
 
-    auto ransSymbols = std::make_shared<std::vector<std::vector<RansSymbol>>>(cdfs->size());
-    for (int i = 0; i < static_cast<int>(cdfs->size()); i++) {
-        const int32_t* cdf = cdfs->at(i).data();
-        std::vector<RansSymbol> ransSym(cdfs->at(i).size());
-        const int ransSize = static_cast<int>(ransSym.size() - 1);
-        for (int j = 0; j < ransSize; j++) {
-            ransSym[j] = RansSymbol(
-                { static_cast<uint16_t>(cdf[j]), static_cast<uint16_t>(cdf[j + 1] - cdf[j]) });
-        }
-        ransSymbols->at(i) = ransSym;
+FORCE_INLINE void RansEncInit(RansState& r)
+{
+    r = RANS_BYTE_L;
+}
+
+FORCE_INLINE void RansEncPut(RansState& r, uint8_t*& ptr, uint32_t start, uint32_t freq)
+{
+    // renormalize
+    const uint32_t r_max = freq << ENC_RENORM_SHIFT_BITS;
+    while (r >= r_max) {
+        // converting to uint8_t will only keep the lowest 8 bits, equal to r & 0xff
+        *(--ptr) = static_cast<uint8_t>(r);
+        r >>= 8;
     }
 
-    _ransSymbols.push_back(ransSymbols);
-    _cdfs_sizes.push_back(cdfs_sizes);
-    _offsets.push_back(offsets);
-    return static_cast<int>(_ransSymbols.size()) - 1;
+    r = ((r / freq) << SCALE_BITS) + (r % freq) + start;
 }
 
-void RansEncoderLib::empty_cdf_buffer()
+FORCE_INLINE void RansEncPutBits(RansState& r, uint8_t*& ptr, uint32_t val)
 {
-    _ransSymbols.clear();
-    _cdfs_sizes.clear();
-    _offsets.clear();
-}
+    static_assert(BYPASS_PRECISION <= 8);
+    assert(val < (1u << BYPASS_PRECISION));
 
-FORCE_INLINE void RansEncoderLib::encode_one_symbol(uint8_t*& ptr, RansState& rans, const int32_t symbol,
-                                                    const int32_t cdf_size, const int32_t offset,
-                                                    const std::vector<RansSymbol>& ransSymbols)
-{
-    const int32_t max_value = cdf_size - 2;
-    int32_t value = symbol - offset;
-
-    uint32_t raw_val = 0;
-    if (value < 0) {
-        raw_val = -2 * value - 1;
-        value = max_value;
-    } else if (value >= max_value) {
-        raw_val = 2 * (value - max_value);
-        value = max_value;
+    constexpr uint32_t freq = 1 << (SCALE_BITS - BYPASS_PRECISION);
+    constexpr uint32_t x_max = freq << ENC_RENORM_SHIFT_BITS;
+    while (r >= x_max) {
+        *(--ptr) = static_cast<uint8_t>(r);
+        r >>= 8;
     }
+
+    r = (r << BYPASS_PRECISION) | val;
+}
+
+FORCE_INLINE int8_t decode_one_symbol(const uint8_t*& ptr8, RansState& rans, const int32_t* cdf,
+                                      const int8_t max_value)
+{
+    const int32_t cum_freq = RansDecGet(rans);
+
+    int s = 1;
+    while (cdf[s] <= cum_freq) {
+        s++;
+    }
+    s--;
+
+    RansDecAdvance(rans, ptr8, cdf[s], cdf[s + 1] - cdf[s]);
+
+    int32_t value = static_cast<int32_t>(s);
 
     if (value == max_value) {
+        // Bypass decoding mode
+        int32_t val = RansDecGetBits(rans, ptr8);
+        int32_t n_bypass = val;
+
+        while (val == MAX_BYPASS_VAL) {
+            val = RansDecGetBits(rans, ptr8);
+            n_bypass += val;
+        }
+
+        int32_t raw_val = 0;
+        for (int j = 0; j < n_bypass; ++j) {
+            val = RansDecGetBits(rans, ptr8);
+            raw_val |= val << (j * BYPASS_PRECISION);
+        }
+        value = raw_val + max_value;
+    }
+
+    return static_cast<int8_t>((value % 2 == 1) ? (value + 1) / 2 : -(value + 1) / 2);
+}
+
+FORCE_INLINE void encode_one_symbol(uint8_t*& ptr, RansState& rans, const int32_t symbol,
+                                    const int8_t max_value, const std::vector<RansSymbol>& ransSymbols)
+{
+    int32_t value = abs(symbol) * 2 - (symbol > 0);
+
+    if (value >= max_value) {
+        const uint32_t raw_val = value - max_value;
+        value = max_value;
+
         std::vector<uint16_t> bypassBins;
         bypassBins.reserve(20);
-        /* Determine the number of bypasses (in bypass_precision size) needed to
-         * encode the raw value. */
+        // Determine the number of bypasses (in BYPASS_PRECISION size)
+        // needed to encode the raw value.
         int32_t n_bypass = 0;
-        while ((raw_val >> (n_bypass * bypass_precision)) != 0) {
+        while ((raw_val >> (n_bypass * BYPASS_PRECISION)) != 0) {
             ++n_bypass;
         }
 
-        /* Encode number of bypasses */
+        // Encode number of bypasses
         int32_t val = n_bypass;
-        while (val >= max_bypass_val) {
-            bypassBins.push_back(max_bypass_val);
-            val -= max_bypass_val;
+        while (val >= MAX_BYPASS_VAL) {
+            bypassBins.push_back(MAX_BYPASS_VAL);
+            val -= MAX_BYPASS_VAL;
         }
         bypassBins.push_back(static_cast<uint16_t>(val));
 
-        /* Encode raw value */
+        // Encode raw value
         for (int32_t j = 0; j < n_bypass; ++j) {
-            const int32_t val1 = (raw_val >> (j * bypass_precision)) & max_bypass_val;
+            const int32_t val1 = (raw_val >> (j * BYPASS_PRECISION)) & MAX_BYPASS_VAL;
             bypassBins.push_back(static_cast<uint16_t>(val1));
         }
 
@@ -139,184 +180,189 @@ FORCE_INLINE void RansEncoderLib::encode_one_symbol(uint8_t*& ptr, RansState& ra
     RansEncPut(rans, ptr, ransSymbols[value].start, ransSymbols[value].range);
 }
 
-void RansEncoderLib::encode_y(const std::shared_ptr<std::vector<int16_t>> symbols,
-                              const int cdf_group_index)
+RansEncoderLib::RansEncoderLib()
+{
+    m_ransSymbols.resize(2);
+    m_max_value.resize(2);
+    m_stream_buffer = new uint8_t[max_stream_buffer_size];
+    m_stream = std::make_shared<std::vector<uint8_t>>();
+    m_thread = std::thread(&RansEncoderLib::worker, this);
+}
+
+RansEncoderLib::~RansEncoderLib()
+{
+    {
+        std::lock_guard<std::mutex> lk(m_mutex_pending);
+        m_finish = true;
+    }
+    m_cv_pending.notify_all();
+    if (m_thread.joinable()) {
+        m_thread.join();
+    }
+
+    if (m_stream_buffer != nullptr) {
+        delete[] m_stream_buffer;
+        m_stream_buffer = nullptr;
+    }
+}
+
+void RansEncoderLib::check_buffer_capacity(int symbol_count)
+{
+    // Conservative upper bound: each symbol can emit up to 4 bytes (3 bytes renorm + overhead).
+    // The flush at the end writes 4 bytes for the final state.
+    const int required_bytes = symbol_count * 4 + 4;
+    const int remaining_bytes = static_cast<int>(m_ptr - m_stream_buffer);
+    if (remaining_bytes < required_bytes) {
+        throw std::runtime_error("rANS buffer overflow: encoding " + std::to_string(symbol_count)
+                                 + " symbols requires up to " + std::to_string(required_bytes)
+                                 + " bytes, but only " + std::to_string(remaining_bytes)
+                                 + " bytes remain in the buffer (capacity: "
+                                 + std::to_string(max_stream_buffer_size) + ")");
+    }
+}
+
+void RansEncoderLib::encode_y(const std::shared_ptr<std::vector<int16_t>>& symbols,
+                              const int symbol_size, const int symbol_offset)
 {
     PendingTask p;
     p.workType = WorkType::EncodeDecodeY;
     p.symbols_y = symbols;
-    p.cdf_group_index = cdf_group_index;
-    m_pendingEncodingList.push_back(p);
+    p.symbol_size = symbol_size;
+    p.symbol_offset = symbol_offset;
+    {
+        std::unique_lock<std::mutex> lk(m_mutex_pending);
+        m_pending.push(std::move(p));
+    }
+    m_cv_pending.notify_one();
 }
 
-void RansEncoderLib::encode_z(const std::shared_ptr<std::vector<int8_t>> symbols,
-                              const int cdf_group_index, const int start_offset,
-                              const int per_channel_size)
+void RansEncoderLib::encode_y_internal(const std::shared_ptr<std::vector<int16_t>>& symbols,
+                                       const int symbol_size, const int symbol_offset)
+{
+    check_buffer_capacity(symbol_size);
+
+    // backward loop on symbols from the end;
+    const int16_t* symbols_ptr = symbols->data();
+    const int8_t* max_value_ptr = m_max_value[1]->data();
+    const std::vector<RansSymbol>* ransSymbols_ptr = m_ransSymbols[1]->data();
+    const int symbol_start = symbol_offset;
+    const int symbol_end = symbol_offset + symbol_size - 1;
+
+    for (int i = symbol_end; i >= symbol_start; i--) {
+        const int16_t combined_symbol = symbols_ptr[i];
+        const int32_t cdf_idx = combined_symbol & 0xff;
+        const int32_t s = static_cast<int8_t>(combined_symbol >> 8);
+        encode_one_symbol(m_ptr, m_rans, s, max_value_ptr[cdf_idx], ransSymbols_ptr[cdf_idx]);
+    }
+}
+
+void RansEncoderLib::encode_z(const std::shared_ptr<std::vector<int8_t>>& symbols, const int symbol_size,
+                              const int symbol_offset, const int cdf_offset, const int ch)
 {
     PendingTask p;
     p.workType = WorkType::EncodeDecodeZ;
     p.symbols_z = symbols;
-    p.cdf_group_index = cdf_group_index;
-    p.start_offset = start_offset;
-    p.per_channel_size = per_channel_size;
-    m_pendingEncodingList.push_back(p);
-}
-#include <iostream>
-FORCE_INLINE void RansEncoderLib::encode_y_internal(uint8_t*& ptr, RansState& rans,
-                                                    const std::shared_ptr<std::vector<int16_t>> symbols,
-                                                    const int cdf_group_index)
-{
-    // backward loop on symbols from the end;
-    const int16_t* symbols_ptr = symbols->data();
-    const int32_t* cdfs_sizes_ptr = _cdfs_sizes[cdf_group_index]->data();
-    const int32_t* offsets_ptr = _offsets[cdf_group_index]->data();
-    const int symbol_size = static_cast<int>(symbols->size());
-
-    for (int i = symbol_size - 1; i >= 0; i--) {
-        const int32_t combined_symbol = symbols_ptr[i];
-        const int32_t cdf_idx = combined_symbol & 0xff;
-        const int32_t s = combined_symbol >> 8;
-        encode_one_symbol(ptr, rans, s, cdfs_sizes_ptr[cdf_idx], offsets_ptr[cdf_idx],
-                          _ransSymbols[cdf_group_index]->at(cdf_idx));
+    p.symbol_size = symbol_size;
+    p.symbol_offset = symbol_offset;
+    p.cdf_offset = cdf_offset;
+    p.ch = ch;
+    {
+        std::unique_lock<std::mutex> lk(m_mutex_pending);
+        m_pending.push(std::move(p));
     }
+    m_cv_pending.notify_one();
 }
 
-FORCE_INLINE void RansEncoderLib::encode_z_internal(uint8_t*& ptr, RansState& rans,
-                                                    const std::shared_ptr<std::vector<int8_t>> symbols,
-                                                    const int cdf_group_index, const int start_offset,
-                                                    const int per_channel_size)
+void RansEncoderLib::encode_z_internal(const std::shared_ptr<std::vector<int8_t>>& symbols,
+                                       const int symbol_size, const int symbol_offset,
+                                       const int cdf_offset, const int ch)
 {
+    check_buffer_capacity(symbol_size);
+
     // backward loop on symbols from the end;
     const int8_t* symbols_ptr = symbols->data();
-    const int32_t* cdfs_sizes_ptr = _cdfs_sizes[cdf_group_index]->data();
-    const int32_t* offsets_ptr = _offsets[cdf_group_index]->data();
-    const int symbol_size = static_cast<int>(symbols->size());
+    const int8_t* max_value_ptr = m_max_value[0]->data();
+    const std::vector<RansSymbol>* ransSymbols_ptr = m_ransSymbols[0]->data();
+    const int symbol_start = symbol_offset;
+    const int symbol_end = symbol_offset + symbol_size - 1;
 
-    for (int i = symbol_size - 1; i >= 0; i--) {
-        const int32_t cdf_idx = i / per_channel_size + start_offset;
-        encode_one_symbol(ptr, rans, symbols_ptr[i], cdfs_sizes_ptr[cdf_idx], offsets_ptr[cdf_idx],
-                          _ransSymbols[cdf_group_index]->at(cdf_idx));
+    for (int i = symbol_end; i >= symbol_start; i--) {
+        const int32_t cdf_idx = (i % ch) + cdf_offset;
+        encode_one_symbol(m_ptr, m_rans, symbols_ptr[i], max_value_ptr[cdf_idx],
+                          ransSymbols_ptr[cdf_idx]);
     }
 }
 
 void RansEncoderLib::flush()
 {
-    RansState rans;
-    RansEncInit(rans);
-
-    int32_t total_symbol_size = 0;
-    for (auto it = m_pendingEncodingList.begin(); it != m_pendingEncodingList.end(); it++) {
-        if (it->workType == WorkType::EncodeDecodeY) {
-            total_symbol_size += static_cast<int32_t>(it->symbols_y->size());
-        } else if (it->workType == WorkType::EncodeDecodeZ) {
-            total_symbol_size += static_cast<int32_t>(it->symbols_z->size());
-        }
-    }
-
-    if (total_symbol_size == 0) {
-        _stream->resize(0);
-        return;
-    }
-
-    uint8_t* output = new uint8_t[total_symbol_size];  // too much space ?
-    uint8_t* ptrEnd = output + total_symbol_size;
-    uint8_t* ptr = ptrEnd;
-    assert(ptr != nullptr);
-
-    for (auto it = m_pendingEncodingList.rbegin(); it != m_pendingEncodingList.rend(); it++) {
-        PendingTask p = *it;
-        if (p.workType == WorkType::EncodeDecodeY) {
-            encode_y_internal(ptr, rans, p.symbols_y, p.cdf_group_index);
-        } else if (p.workType == WorkType::EncodeDecodeZ) {
-            encode_z_internal(ptr, rans, p.symbols_z, p.cdf_group_index, p.start_offset,
-                              p.per_channel_size);
-        }
-    }
-
-    RansEncFlush(rans, ptr);
-
-    const int nbytes = static_cast<int>(std::distance(ptr, ptrEnd));
-
-    _stream->resize(nbytes);
-    memcpy(_stream->data(), ptr, nbytes);
-    delete[] output;
-}
-
-std::shared_ptr<std::vector<uint8_t>> RansEncoderLib::get_encoded_stream()
-{
-    return _stream;
-}
-
-void RansEncoderLib::reset()
-{
-    m_pendingEncodingList.clear();
-    _stream->clear();
-}
-
-RansEncoderLibMultiThread::RansEncoderLibMultiThread()
-    : RansEncoderLib()
-    , m_finish(false)
-    , m_result_ready(false)
-{
-    m_thread = std::thread(&RansEncoderLibMultiThread::worker, this);
-}
-RansEncoderLibMultiThread::~RansEncoderLibMultiThread()
-{
-    {
-        std::lock_guard<std::mutex> lk(m_mutex_pending);
-        std::lock_guard<std::mutex> lk1(m_mutex_result);
-        m_finish = true;
-    }
-    m_cv_pending.notify_one();
-    m_cv_result.notify_one();
-    m_thread.join();
-}
-
-void RansEncoderLibMultiThread::flush()
-{
     PendingTask p;
     p.workType = WorkType::Flush;
     {
         std::unique_lock<std::mutex> lk(m_mutex_pending);
-        m_pending.push_back(p);
+        m_pending.push(std::move(p));
     }
     m_cv_pending.notify_one();
 }
 
-std::shared_ptr<std::vector<uint8_t>> RansEncoderLibMultiThread::get_encoded_stream()
+std::shared_ptr<std::vector<uint8_t>> RansEncoderLib::get_encoded_stream()
 {
     std::unique_lock<std::mutex> lk(m_mutex_result);
     m_cv_result.wait(lk, [this] { return m_result_ready || m_finish; });
-    return RansEncoderLib::get_encoded_stream();
+    return m_stream;
 }
 
-void RansEncoderLibMultiThread::reset()
+void RansEncoderLib::reset()
 {
-    RansEncoderLib::reset();
+    m_stream->clear();
+
+    RansEncInit(m_rans);
+
+    uint8_t* ptrEnd = m_stream_buffer + max_stream_buffer_size;
+    m_ptr = ptrEnd;
+
     std::lock_guard<std::mutex> lk(m_mutex_result);
     m_result_ready = false;
 }
 
-void RansEncoderLibMultiThread::worker()
+void RansEncoderLib::set_cdf(const std::shared_ptr<std::vector<std::vector<RansSymbol>>>& ransSymbols,
+                             const std::shared_ptr<std::vector<int8_t>>& max_value, const int index)
+{
+    assert(index < 2);
+    m_ransSymbols[index] = ransSymbols;
+    m_max_value[index] = max_value;
+}
+
+void RansEncoderLib::worker()
 {
     while (!m_finish) {
         std::unique_lock<std::mutex> lk(m_mutex_pending);
-        m_cv_pending.wait(lk, [this] { return m_pending.size() > 0 || m_finish; });
+        m_cv_pending.wait(lk, [this] { return !m_pending.empty() || m_finish; });
         if (m_finish) {
-            lk.unlock();
             break;
         }
-        if (m_pending.size() == 0) {
+        while (!m_pending.empty()) {
+            auto p = std::move(m_pending.front());
+            m_pending.pop();
             lk.unlock();
-            // std::cout << "contine in worker" << std::endl;
-            continue;
-        }
-        while (m_pending.size() > 0) {
-            auto p = m_pending.front();
-            m_pending.pop_front();
-            lk.unlock();
-            if (p.workType == WorkType::Flush) {
-                RansEncoderLib::flush();
+            if (p.workType == WorkType::EncodeDecodeY) {
+                RansEncoderLib::encode_y_internal(p.symbols_y, p.symbol_size, p.symbol_offset);
+            } else if (p.workType == WorkType::EncodeDecodeZ) {
+                RansEncoderLib::encode_z_internal(p.symbols_z, p.symbol_size, p.symbol_offset,
+                                                  p.cdf_offset, p.ch);
+            } else if (p.workType == WorkType::Flush) {
+                RansEncFlush(m_rans, m_ptr);
+
+                uint8_t* ptrEnd = m_stream_buffer + max_stream_buffer_size;
+                const int nbytes = static_cast<int>(std::distance(m_ptr, ptrEnd));
+
+                if (m_ptr < m_stream_buffer || nbytes > max_stream_buffer_size) {
+                    throw std::runtime_error("rANS stream buffer overflow: encoded size ("
+                                             + std::to_string(nbytes) + ") exceeds buffer capacity ("
+                                             + std::to_string(max_stream_buffer_size) + ")");
+                }
+
+                m_stream->resize(nbytes);
+                std::copy(m_ptr, m_ptr + nbytes, m_stream->data());
                 {
                     std::lock_guard<std::mutex> lk_result(m_mutex_result);
                     m_result_ready = true;
@@ -329,132 +375,27 @@ void RansEncoderLibMultiThread::worker()
     }
 }
 
-void RansDecoderLib::set_stream(const std::shared_ptr<std::vector<uint8_t>> encoded)
+RansDecoderLib::RansDecoderLib()
 {
-    _stream = encoded;
-    _ptr8 = (uint8_t*)(_stream->data());
-    RansDecInit(_rans, _ptr8);
+    m_cdfs.resize(2);
+    m_max_value.resize(2);
+    m_thread = std::thread(&RansDecoderLib::worker, this);
 }
 
-int RansDecoderLib::add_cdf(const std::shared_ptr<std::vector<std::vector<int32_t>>> cdfs,
-                            const std::shared_ptr<std::vector<int32_t>> cdfs_sizes,
-                            const std::shared_ptr<std::vector<int32_t>> offsets)
-{
-    _cdfs.push_back(cdfs);
-    _cdfs_sizes.push_back(cdfs_sizes);
-    _offsets.push_back(offsets);
-    return static_cast<int>(_cdfs.size()) - 1;
-}
-
-void RansDecoderLib::empty_cdf_buffer()
-{
-    _cdfs.clear();
-    _cdfs_sizes.clear();
-    _offsets.clear();
-}
-
-FORCE_INLINE int8_t RansDecoderLib::decode_one_symbol(const int32_t* cdf, const int32_t cdf_size,
-                                                      const int32_t offset)
-{
-    const int32_t max_value = cdf_size - 2;
-    const int32_t cum_freq = static_cast<int32_t>(RansDecGet(_rans));
-
-    int s = 1;
-    while (cdf[s++] <= cum_freq) {
-    }
-    s -= 2;
-
-    RansDecAdvance(_rans, _ptr8, cdf[s], cdf[s + 1] - cdf[s]);
-
-    int32_t value = static_cast<int32_t>(s);
-
-    if (value == max_value) {
-        /* Bypass decoding mode */
-        int32_t val = RansDecGetBits(_rans, _ptr8);
-        int32_t n_bypass = val;
-
-        while (val == max_bypass_val) {
-            val = RansDecGetBits(_rans, _ptr8);
-            n_bypass += val;
-        }
-
-        int32_t raw_val = 0;
-        for (int j = 0; j < n_bypass; ++j) {
-            val = RansDecGetBits(_rans, _ptr8);
-            raw_val |= val << (j * bypass_precision);
-        }
-        value = raw_val >> 1;
-        if (raw_val & 1) {
-            value = -value - 1;
-        } else {
-            value += max_value;
-        }
-    }
-
-    return static_cast<int8_t>(value + offset);
-}
-
-void RansDecoderLib::decode_y(const std::shared_ptr<std::vector<uint8_t>> indexes,
-                              const int cdf_group_index)
-{
-    int index_size = static_cast<int>(indexes->size());
-    m_decoded = std::make_shared<std::vector<int8_t>>(index_size);
-
-    int8_t* outout_ptr = m_decoded->data();
-    const uint8_t* indexes_ptr = indexes->data();
-    const int32_t* cdfs_sizes_ptr = _cdfs_sizes[cdf_group_index]->data();
-    const int32_t* offsets_ptr = _offsets[cdf_group_index]->data();
-    const auto& cdfs = _cdfs[cdf_group_index];
-    for (int i = 0; i < index_size; ++i) {
-        const int32_t cdf_idx = indexes_ptr[i];
-        outout_ptr[i] = decode_one_symbol(cdfs->at(cdf_idx).data(), cdfs_sizes_ptr[cdf_idx],
-                                          offsets_ptr[cdf_idx]);
-    }
-}
-
-void RansDecoderLib::decode_z(const int total_size, const int cdf_group_index,
-                              const int start_offset, const int per_channel_size)
-{
-    m_decoded = std::make_shared<std::vector<int8_t>>(total_size);
-
-    int8_t* outout_ptr = m_decoded->data();
-    const int32_t* cdfs_sizes_ptr = _cdfs_sizes[cdf_group_index]->data();
-    const int32_t* offsets_ptr = _offsets[cdf_group_index]->data();
-    const auto& cdfs = _cdfs[cdf_group_index];
-    for (int i = 0; i < total_size; ++i) {
-        const int32_t cdf_idx = i / per_channel_size + start_offset;
-        outout_ptr[i] = decode_one_symbol(cdfs->at(cdf_idx).data(), cdfs_sizes_ptr[cdf_idx],
-                                          offsets_ptr[cdf_idx]);
-    }
-}
-
-std::shared_ptr<std::vector<int8_t>> RansDecoderLib::get_decoded_tensor()
-{
-    return m_decoded;
-}
-
-RansDecoderLibMultiThread::RansDecoderLibMultiThread()
-    : RansDecoderLib()
-    , m_finish(false)
-    , m_result_ready(false)
-{
-    m_thread = std::thread(&RansDecoderLibMultiThread::worker, this);
-}
-
-RansDecoderLibMultiThread::~RansDecoderLibMultiThread()
+RansDecoderLib::~RansDecoderLib()
 {
     {
         std::lock_guard<std::mutex> lk(m_mutex_pending);
-        std::lock_guard<std::mutex> lk1(m_mutex_result);
         m_finish = true;
     }
-    m_cv_pending.notify_one();
-    m_cv_result.notify_one();
-    m_thread.join();
+    m_cv_pending.notify_all();
+    if (m_thread.joinable()) {
+        m_thread.join();
+    }
 }
 
-void RansDecoderLibMultiThread::decode_y(const std::shared_ptr<std::vector<uint8_t>> indexes,
-                                         const int cdf_group_index)
+void RansDecoderLib::decode_y(int8_t* decoded_ptr, const std::shared_ptr<std::vector<uint8_t>>& indexes,
+                              const int symbol_size, const int symbol_offset)
 {
     {
         std::lock_guard<std::mutex> lk(m_mutex_result);
@@ -463,16 +404,32 @@ void RansDecoderLibMultiThread::decode_y(const std::shared_ptr<std::vector<uint8
     PendingTask p;
     p.workType = WorkType::EncodeDecodeY;
     p.indexes = indexes;
-    p.cdf_group_index = cdf_group_index;
+    p.decoded_ptr = decoded_ptr;
+    p.symbol_size = symbol_size;
+    p.symbol_offset = symbol_offset;
     {
         std::unique_lock<std::mutex> lk(m_mutex_pending);
-        m_pending.push_back(p);
+        m_pending.push(std::move(p));
     }
     m_cv_pending.notify_one();
 }
 
-void RansDecoderLibMultiThread::decode_z(const int total_size, const int cdf_group_index,
-                                         const int start_offset, const int per_channel_size)
+void RansDecoderLib::decode_y_internal(int8_t* decoded_ptr,
+                                       const std::shared_ptr<std::vector<uint8_t>>& indexes,
+                                       const int symbol_size, const int symbol_offset)
+{
+    const uint8_t* indexes_ptr = indexes->data();
+    const int8_t* max_value_ptr = m_max_value[1]->data();
+    const std::vector<int32_t>* cdfs = m_cdfs[1]->data();
+    for (int i = 0; i < symbol_size; ++i) {
+        const int32_t cdf_idx = indexes_ptr[i + symbol_offset];
+        decoded_ptr[i + symbol_offset] =
+            decode_one_symbol(m_ptr8, m_rans, cdfs[cdf_idx].data(), max_value_ptr[cdf_idx]);
+    }
+}
+
+void RansDecoderLib::decode_z(int8_t* decoded_ptr, const int symbol_size, const int symbol_offset,
+                              const int cdf_offset, const int ch)
 {
     {
         std::lock_guard<std::mutex> lk(m_mutex_result);
@@ -480,47 +437,69 @@ void RansDecoderLibMultiThread::decode_z(const int total_size, const int cdf_gro
     }
     PendingTask p;
     p.workType = WorkType::EncodeDecodeZ;
-    p.total_size = total_size;
-    p.cdf_group_index = cdf_group_index;
-    p.start_offset = start_offset;
-    p.per_channel_size = per_channel_size;
+    p.decoded_ptr = decoded_ptr;
+    p.symbol_size = symbol_size;
+    p.symbol_offset = symbol_offset;
+    p.cdf_offset = cdf_offset;
+    p.ch = ch;
     {
         std::unique_lock<std::mutex> lk(m_mutex_pending);
-        m_pending.push_back(p);
+        m_pending.push(std::move(p));
     }
     m_cv_pending.notify_one();
 }
 
-std::shared_ptr<std::vector<int8_t>> RansDecoderLibMultiThread::get_decoded_tensor()
+void RansDecoderLib::decode_z_internal(int8_t* decoded_ptr, const int symbol_size,
+                                       const int symbol_offset, const int cdf_offset, const int ch)
+{
+    const int8_t* max_value_ptr = m_max_value[0]->data();
+    const std::vector<int32_t>* cdfs = m_cdfs[0]->data();
+
+    for (int i = 0; i < symbol_size; ++i) {
+        const int32_t cdf_idx = ((i + symbol_offset) % ch) + cdf_offset;
+        decoded_ptr[i + symbol_offset] =
+            decode_one_symbol(m_ptr8, m_rans, cdfs[cdf_idx].data(), max_value_ptr[cdf_idx]);
+    }
+}
+
+void RansDecoderLib::set_cdf(const std::shared_ptr<std::vector<std::vector<int32_t>>>& cdfs,
+                             const std::shared_ptr<std::vector<int8_t>>& max_value, const int index)
+{
+    assert(index < 2);
+    m_cdfs[index] = cdfs;
+    m_max_value[index] = max_value;
+}
+
+void RansDecoderLib::set_stream(const std::shared_ptr<std::vector<uint8_t>> encoded)
+{
+    m_stream = encoded;
+    m_ptr8 = m_stream->data();
+    RansDecInit(m_rans, m_ptr8);
+}
+
+bool RansDecoderLib::wait_for_decoding_finish()
 {
     std::unique_lock<std::mutex> lk(m_mutex_result);
     m_cv_result.wait(lk, [this] { return m_result_ready || m_finish; });
-    return RansDecoderLib::get_decoded_tensor();
+    return true;
 }
 
-void RansDecoderLibMultiThread::worker()
+void RansDecoderLib::worker()
 {
     while (!m_finish) {
         std::unique_lock<std::mutex> lk(m_mutex_pending);
-        m_cv_pending.wait(lk, [this] { return m_pending.size() > 0 || m_finish; });
+        m_cv_pending.wait(lk, [this] { return !m_pending.empty() || m_finish; });
         if (m_finish) {
-            lk.unlock();
             break;
         }
-        if (m_pending.size() == 0) {
-            lk.unlock();
-            // std::cout << "contine in worker" << std::endl;
-            continue;
-        }
-        while (m_pending.size() > 0) {
-            auto p = m_pending.front();
-            m_pending.pop_front();
+        while (!m_pending.empty()) {
+            auto p = std::move(m_pending.front());
+            m_pending.pop();
             lk.unlock();
             if (p.workType == WorkType::EncodeDecodeY) {
-                RansDecoderLib::decode_y(p.indexes, p.cdf_group_index);
+                decode_y_internal(p.decoded_ptr, p.indexes, p.symbol_size, p.symbol_offset);
             } else if (p.workType == WorkType::EncodeDecodeZ) {
-                RansDecoderLib::decode_z(p.total_size, p.cdf_group_index, p.start_offset,
-                                         p.per_channel_size);
+                decode_z_internal(p.decoded_ptr, p.symbol_size, p.symbol_offset, p.cdf_offset, p.ch);
             }
             {
                 std::lock_guard<std::mutex> lk_result(m_mutex_result);
