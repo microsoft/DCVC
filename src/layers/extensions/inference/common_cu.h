@@ -144,11 +144,6 @@ __forceinline__ __device__ at::Half operator*(const at::Half& a, const bool b)
     return b ? a : static_cast<at::Half>(0.f);
 }
 
-__forceinline__ __device__ bool operator>(const at::Half& a, const at::Half& b)
-{
-    return __hgt(a, b);
-}
-
 __forceinline__ __device__ at::Half reciprocal(const at::Half& a)
 {
     return hrcp(a);
