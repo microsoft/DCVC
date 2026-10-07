@@ -202,14 +202,17 @@ def run_one_point_with_stream(p_net, i_net, args):
     sps_helper = SPSHelper()
 
     frame_idx = 0
+    last_gop_idx = 0
     while frame_idx < frame_num:
         is_intra = False
         if frame_idx == 0 or intra_period == 1:
             is_intra = True
-        if intra_period > 1 and frame_idx != 1:
+        if intra_period > 1:
             assert intra_period % g_frame_delay == 0
-            if frame_idx % intra_period == 1:
+            gop_idx = max(frame_idx - 1, 0) // intra_period
+            if gop_idx > last_gop_idx:
                 is_intra = True
+                last_gop_idx = gop_idx
 
         maximum_read = min(g_frame_delay, frame_num - frame_idx)
         if is_intra:
@@ -229,7 +232,8 @@ def run_one_point_with_stream(p_net, i_net, args):
                 p_net.add_ref_feature_from_frame(encoded['x_hat'])
             frame_types.append(0)
         else:
-            if reset_interval > 0 and (frame_idx + g_frame_delay) % reset_interval == 1:
+            if reset_interval > 0 and (frame_idx + g_frame_delay - 1) // reset_interval > \
+                    (frame_idx - 1) // reset_interval:
                 reset_feature_memory = 1
             else:
                 reset_feature_memory = 0
